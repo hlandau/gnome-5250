@@ -67,8 +67,8 @@ static void gtkterm_destroy (Tn5250Terminal *This);
 static int gtkterm_width (Tn5250Terminal *This);
 static int gtkterm_height (Tn5250Terminal *This);
 static int gtkterm_flags (Tn5250Terminal *This);
-static void gtkterm_update (Tn5250Terminal *This, Tn5250DBuffer *dsp);
-static void gtkterm_update_indicators (Tn5250Terminal *This, Tn5250DBuffer *dsp);
+static void gtkterm_update (Tn5250Terminal *This, Tn5250Display *dsp);
+static void gtkterm_update_indicators (Tn5250Terminal *This, Tn5250Display *dsp);
 static int gtkterm_waitevent (Tn5250Terminal *This);
 static int gtkterm_getkey (Tn5250Terminal *This);
 static void gtkterm_beep (Tn5250Terminal *This);
@@ -642,7 +642,7 @@ static void gtkterm_beep (Tn5250Terminal *This)
   gdk_beep();
 }
 
-static void gtkterm_update (Tn5250Terminal *tnThis, Tn5250DBuffer *dsp)
+static void gtkterm_update (Tn5250Terminal *tnThis, Tn5250Display *dsp)
 {
   Gtk5250Terminal *This;
   gint y, x;
@@ -655,14 +655,14 @@ static void gtkterm_update (Tn5250Terminal *tnThis, Tn5250DBuffer *dsp)
   g_return_if_fail(dsp != NULL);
 
   This = GTK5250_TERMINAL(tnThis->data);
-  This->w = tn5250_dbuffer_width(dsp);
-  This->h = tn5250_dbuffer_height(dsp);
+  This->w = tn5250_display_width(dsp);
+  This->h = tn5250_display_height(dsp);
 
   for(y = 0; y < This->h; y++)
     {
       for(x = 0; x < This->w; x++)
 	{
-	  c = tn5250_dbuffer_char_at(dsp, y, x);
+	  c = tn5250_display_char_at(dsp, y, x);
 	  if ((c & 0xe0) == 0x20)
 	    {
 	      a = (c & 0xff);
@@ -693,12 +693,12 @@ static void gtkterm_update (Tn5250Terminal *tnThis, Tn5250DBuffer *dsp)
 	}
     }
 
-  if (tn5250_dbuffer_cursor_y (dsp) != This->cy ||
-      tn5250_dbuffer_cursor_x (dsp) != This->cx)
+  if (tn5250_display_cursor_y (dsp) != This->cy ||
+      tn5250_display_cursor_x (dsp) != This->cx)
     {
       This->cells[This->cy][This->cx] |= A_5250_DIRTYFLAG;
-      This->cy = tn5250_dbuffer_cursor_y (dsp);
-      This->cx = tn5250_dbuffer_cursor_x (dsp);
+      This->cy = tn5250_display_cursor_y (dsp);
+      This->cx = tn5250_display_cursor_x (dsp);
       This->cells[This->cy][This->cx] |= A_5250_DIRTYFLAG;
     }
 
@@ -706,7 +706,7 @@ static void gtkterm_update (Tn5250Terminal *tnThis, Tn5250DBuffer *dsp)
   gtk_widget_queue_draw ((GtkWidget*) This);
 }
 
-static void gtkterm_update_indicators (Tn5250Terminal *This, Tn5250DBuffer *dsp)
+static void gtkterm_update_indicators (Tn5250Terminal *This, Tn5250Display *dsp)
 {
   /* FIXME: Implement. */
 }

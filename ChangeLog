@@ -1,3 +1,7 @@
+Wed Dec  1, 1999  Jay 'Eraserhead' Felice <jasonf@nacs.net>
+	* Updated to compile with tn5250-0.15.3+ (API change from passing
+	  display buffer to terminals to passing display to terminals).
+
 Sat Nov 20, 1999  Jay 'Eraserhead' Felice <jasonf@nacs.net>
 	* autoconf'd and automade
 	* Better caching to bitmap (don't draw characters that haven't changed
