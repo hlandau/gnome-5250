@@ -5,6 +5,8 @@
 extern "C" {
 #endif /* __cplusplus */
 
+#include <tn5250.h>
+
 #define GTK5250_TERMINAL_TYPE \
     (gtk5250_terminal_get_type ())
 #define GTK5250_TERMINAL(obj) \
@@ -20,6 +22,13 @@ typedef struct _Gtk5250TerminalClass Gtk5250TerminalClass;
 struct _Gtk5250Terminal
 {
   GtkWidget	    widget;
+
+  Tn5250Terminal    tn5250_impl;	/* Our implementation of the 5250 object */
+  gint		    conn_tag;		/* Tag from gtk_input_add_full() */
+  gint		    pending;		/* Pending events for gtkterm_waitevent to return */
+  guint		    next_keyval;
+
+  Tn5250Display*    char_buffer;	/* A display used as a character buffer. */
 
   GdkFont*	    font;
   gint		    font_w, font_h;
@@ -44,8 +53,9 @@ struct _Gtk5250TerminalClass
   GtkWidgetClass    parent_class;
 };
 
-GtkType	      gtk5250_terminal_get_type		(void);
-GtkWidget*    gtk5250_terminal_new		(void);
+GtkType		gtk5250_terminal_get_type	(void);
+GtkWidget*	gtk5250_terminal_new		(void);
+Tn5250Terminal*	gtk5250_terminal_get_impl	(Gtk5250Terminal *This);
 
 #ifdef __cplusplus
 }
