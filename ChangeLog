@@ -1,3 +1,7 @@
+Wed May 17, 2000 Jay 'Eraserhead' Felice <jfelice@cronosys.com>
+	* Added TODO file.  Some work on propogating the config object to
+	  all the proper components (specifically the Gtk5250PropDlg).
+
 Tue May 16, 2000 Jay 'Eraserhead' Felice <jfelice@cronosys.com>
 	* Fixed some Gtk5250Terminal resizing bugs, it's now possible to use
 	  132 column mode (although it doesn resize smaller again when you

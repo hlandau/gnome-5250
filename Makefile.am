@@ -17,4 +17,4 @@ gtk_5250_SOURCES	= gtk-5250.c\
 noinst_HEADERS		= gtk5250propdlg.h\
 			  gtk5250terminal.h
 
-EXTRA_DIST		= c-header
+EXTRA_DIST		= c-header TODO

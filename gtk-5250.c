@@ -229,7 +229,12 @@ file_preferences_callback ()
   static GtkWidget *dlg = NULL;
 
   if (dlg == NULL)
-    dlg = gtk5250_prop_dlg_new ();
+    {
+      dlg = gtk5250_prop_dlg_new ();
+      gtk5250_prop_dlg_set_config (GTK5250_PROP_DLG (dlg), config);
+    }
+  else
+    gtk5250_prop_dlg_update_dialog (GTK5250_PROP_DLG (dlg));
 
   gtk_widget_show (dlg);
   /* FIXME: Raise window. */

@@ -41,6 +41,8 @@ struct _Gtk5250PropDlg
 {
   GtkDialog	    object;
 
+  Tn5250Config *    config;
+
   GtkWidget *	    name;
   GtkWidget *	    address;
   GtkWidget *	    port;
@@ -65,6 +67,12 @@ struct _Gtk5250PropDlgClass
 
 GtkType		gtk5250_prop_dlg_get_type	  (void);
 GtkWidget*	gtk5250_prop_dlg_new		  (void);
+
+void		gtk5250_prop_dlg_set_config	  (Gtk5250PropDlg *This,
+						   Tn5250Config *config);
+Tn5250Config *	gtk5250_prop_dlg_get_config	  (Gtk5250PropDlg *This);
+void		gtk5250_prop_dlg_update_dialog	  (Gtk5250PropDlg *This);
+void		gtk5250_prop_dlg_update_config	  (Gtk5250PropDlg *This);
 
 #ifdef __cplusplus
 }

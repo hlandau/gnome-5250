@@ -1,0 +1,6 @@
+gnome-5250 TODO
+------------------------------------------------------------------------------
+
+* Configure the Gtk5250Terminal with a Tn5250Config object.
+* Configure the Gtk5250PropDlg with a Tn5250Config object (e.g. set it's
+  values.)

@@ -98,6 +98,7 @@ static void gtk5250_prop_dlg_init (Gtk5250PropDlg *This)
 
   g_return_if_fail (GTK5250_IS_PROP_DLG (This));
 
+  This->config = NULL;
   This->font_name_80 = NULL;
   This->font_name_132 = NULL;
 
@@ -222,6 +223,48 @@ static void gtk5250_prop_dlg_init (Gtk5250PropDlg *This)
 }
 
 /*
+ *  Set the property dialog's config object.
+ */
+void gtk5250_prop_dlg_set_config (Gtk5250PropDlg *This, Tn5250Config *config)
+{
+  if (This->config)
+    tn5250_config_unref (This->config);
+  This->config = config;
+  if (This->config != NULL)
+    gtk5250_prop_dlg_update_dialog (This);
+}
+
+/*
+ *  Retreive the property dialog's config object.
+ */
+Tn5250Config *gtk5250_prop_dlg_get_config (Gtk5250PropDlg *This)
+{
+  return This->config;
+}
+
+/*
+ *  Update the dialog from the information in the configuration object.
+ */
+void gtk5250_prop_dlg_update_dialog (Gtk5250PropDlg *This)
+{
+  const gchar *s;
+  g_return_if_fail (This->config != NULL);
+
+  s = tn5250_config_get (This->config, "host");
+  if (s != NULL && strcmp (s, ""))
+    {
+      gchar *cn_method = NULL, *address = NULL, *port = NULL;
+    }
+}
+
+/*
+ *  Update the configuration object from the dialog (e.g. apply).
+ */
+void gtk5250_prop_dlg_update_config (Gtk5250PropDlg *This)
+{
+}
+
+/*
  *  Destroy the prop_dlg object.
  */
 static void gtk5250_prop_dlg_destroy (GtkObject *obj)
@@ -230,6 +273,22 @@ static void gtk5250_prop_dlg_destroy (GtkObject *obj)
  
   g_return_if_fail (!GTK5250_IS_PROP_DLG (obj));
   dlg = GTK5250_PROP_DLG (obj);
+
+  if (dlg->config != NULL)
+    {
+      tn5250_config_unref (dlg->config);
+      dlg->config = NULL;
+    }
+  if (dlg->font_name_80 != NULL)
+    {
+      g_free (dlg->font_name_80);
+      dlg->font_name_80 = NULL;
+    }
+  if (dlg->font_name_132 != NULL)
+    {
+      g_free (dlg->font_name_132);
+      dlg->font_name_132 = NULL;
+    }
 
   if (GTK_OBJECT_CLASS (parent_class)->destroy)
     (* GTK_OBJECT_CLASS (parent_class)->destroy) (obj);
@@ -257,13 +316,7 @@ static void gtk5250_prop_dlg_apply (Gtk5250PropDlg *This)
   if (!gtk5250_prop_dlg_validate (This))
     return;
 
-
-  /* FIXME: Trace Filename */
-  /* FIXME: Trace Append Pid */
-  /* FIXME: Font Name 80 */
-  /* FIXME: Font Name 132 */
-
-  /* FIXME: Colors */
+  gtk5250_prop_dlg_update_config (This);
 }
 
 /*
