@@ -83,6 +83,7 @@ struct _Gtk5250Terminal
   guchar           *copybuf;             /* copy buffer (for copy->clipboard)*/
   gint              copybufsize;
   Tn5250Display	   *display;
+  gint		   rx, ry;		/* ruler position X, Y */
 };
 
 struct _Gtk5250TerminalClass

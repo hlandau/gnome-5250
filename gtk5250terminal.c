@@ -106,7 +106,7 @@ static Gtk5250_color_map colorlist[] =
   { "blue",        "rgb:00/80/ff" },
   { "black",       "rgb:00/00/00" },
   { "green",       "rgb:00/ff/00" },
-  { "ruler_color", "rgb:c0/00/00" },
+  { "ruler_color", "rgb:ff/ff/ff" },
   { NULL, NULL }
 };
 
@@ -239,7 +239,9 @@ static void gtk5250_terminal_init (Gtk5250Terminal *term)
   term->sel_visible = FALSE;
   term->copybuf = NULL;
   term->copybufsize = 0;
-  term->ruler = 1;
+  term->ruler = 0;
+  term->rx = -1;
+  term->ry = -1;
 
   n = 0;
   while (colorlist[n].name != NULL) {
@@ -357,7 +359,7 @@ static void gtk5250_terminal_realize (GtkWidget *widget)
   memset (term->colors, 0, sizeof (term->colors));
   nallocated = 0;
   gdk_color_context_get_pixels (term->color_ctx,
-      term->red, term->green, term->blue, 8,
+      term->red, term->green, term->blue, 9,
       term->colors, &nallocated);
 
   term->store = gdk_pixmap_new (term->client_window, term->font_80_w * 80,
@@ -505,6 +507,17 @@ static gint gtk5250_terminal_expose (GtkWidget *widget, GdkEventExpose *event)
 
   /* gdk_window_clear (widget->window); */
 
+  /* erase previous ruler */
+
+  if (term->ruler && term->rx!=-1 && term->ry!=-1) {
+       pen.pixel = term->colors[(A_5250_BLACK >> 8) - 1];
+       gdk_gc_set_foreground (term->fg_gc, &pen);
+       gdk_draw_line (term->store, term->fg_gc,
+            0, term->ry, widget->allocation.width - (2*BORDER_WIDTH), term->ry);
+       gdk_draw_line (term->store, term->fg_gc,
+            term->rx, 0, term->rx, term->h * (font_h+4) + 3);
+  }
+
   pen.pixel = term->colors[(A_5250_TURQ >> 8) - 1];
   gdk_gc_set_foreground (term->fg_gc, &pen);
   gdk_draw_line (term->store,
@@ -527,6 +540,8 @@ static gint gtk5250_terminal_expose (GtkWidget *widget, GdkEventExpose *event)
 	}
     }
 
+  /* draw new ruler */
+
   if (term->ruler) {
        gint rx,ry;
        rx = term->cx * font_w;
@@ -537,6 +552,8 @@ static gint gtk5250_terminal_expose (GtkWidget *widget, GdkEventExpose *event)
             0, ry, widget->allocation.width - (2*BORDER_WIDTH), ry);
        gdk_draw_line (term->store, term->fg_gc,
             rx, 0, rx, term->h * (font_h+4) + 3);
+       term->rx = rx;
+       term->ry = ry;
   }
        
 
