@@ -71,6 +71,7 @@ static gint gtk5250_clear_selection (GtkWidget *widget, GdkEventSelection *event
 static void gtk5250_copy_selection (GtkWidget *widget, GtkSelectionData *selection_data, guint info, guint timestamp);
 static void gtk5250_selection_received (GtkWidget *widget, GtkSelectionData *selection_data, guint time);
 static void gtk5250_terminal_queuekey(Gtk5250Terminal *term, gint key);
+static void gtk5250_terminal_messagebox(gchar *message);
 
 
 
@@ -88,6 +89,9 @@ static int gtkterm_getkey (Tn5250Terminal *This);
 static void gtkterm_beep (Tn5250Terminal *This);
 static int gtkterm_config (Tn5250Terminal *This, Tn5250Config *config);
 
+void gtkterm_print_screen(Gtk5250Terminal *This);
+void gtkterm_postscript_print(FILE *out, int x, int y, char *string, int attr);
+
 static GtkWidgetClass *parent_class = NULL;
 
 struct _Gtk5250_color_map {
@@ -98,24 +102,17 @@ typedef struct _Gtk5250_color_map Gtk5250_color_map;
 
 static Gtk5250_color_map colorlist[] =
 {
-  { "white",       "rgb:ff/ff/ff" },
-  { "red",         "rgb:ff/00/00" },
-  { "turquoise",   "rgb:00/ff/ff" },
-  { "yellow",      "rgb:ff/ff/00" },
-  { "pink",        "rgb:ff/80/80" },
-  { "blue",        "rgb:00/80/ff" },
-  { "black",       "rgb:00/00/00" },
-  { "green",       "rgb:00/ff/00" },
-  { "ruler_color", "rgb:c0/00/00" },
+  { "white",       "#FFFFFF" },
+  { "red",         "#ff0000" },
+  { "turquoise",   "#00ffff" },
+  { "yellow",      "#ffff00" },
+  { "pink",        "#ff8080" },
+  { "blue",        "#0080ff" },
+  { "black",       "#000000" },
+  { "green",       "#00ff00" },
+  { "ruler_color", "#c00000" },
   { NULL, NULL }
 };
-
-static gushort default_red[8] = 
-  { 0xffff, 0xffff, 0x0000, 0xffff, 0xffff, 0x0000, 0x0000, 0x0000 };
-static gushort default_green[8] =
-  { 0xffff, 0x0000, 0xffff, 0xffff, 0x8080, 0xc8c8, 0x0000, 0xffff };
-static gushort default_blue[8] =
-  { 0xffff, 0x0000, 0xffff, 0x0000, 0x8080, 0xffff, 0x0000, 0x0000 };
 
 static int attribute_map[] =
 {A_5250_GREEN,
@@ -159,17 +156,22 @@ GtkType gtk5250_terminal_get_type ()
   static GtkType terminal_type = 0;
   if (!terminal_type)
     {
-      GtkTypeInfo type_info =
+      static const GTypeInfo type_info =
       {
-	"Gtk5250Terminal",
-	sizeof (Gtk5250Terminal),
-	sizeof (Gtk5250TerminalClass),
-	(GtkClassInitFunc) gtk5250_terminal_class_init,
-	(GtkObjectInitFunc) gtk5250_terminal_init,
-	(GtkArgSetFunc) NULL,
-	(GtkArgGetFunc) NULL
+        sizeof (Gtk5250TerminalClass),
+        NULL, /* base_init */
+        NULL, /* base_finalize */
+        (GClassInitFunc) gtk5250_terminal_class_init,
+        NULL, /* class_init */
+        NULL, /* class_finalize */
+        sizeof (Gtk5250Terminal),
+        0,    /* n_preallocs */
+        (GInstanceInitFunc) gtk5250_terminal_init,
       };
-      terminal_type = gtk_type_unique (gtk_widget_get_type (), &type_info);
+      terminal_type = g_type_register_static (GTK_TYPE_WIDGET,
+                                              "Gtk5250Terminal",
+                                              &type_info,
+                                              0);
     }
   return terminal_type;
 }
@@ -228,7 +230,6 @@ static void gtk5250_terminal_init (Gtk5250Terminal *term)
   term->client_window = NULL;
   term->bg_gc = NULL;
   term->fg_gc = NULL;
-  term->color_ctx = NULL;
   term->blink_timeout = 0;
   term->blink_state = 1;
   term->cx = term->cy = 0;
@@ -240,15 +241,16 @@ static void gtk5250_terminal_init (Gtk5250Terminal *term)
   term->copybuf = NULL;
   term->copybufsize = 0;
   term->ruler = 0;
+  term->local_print = 0;
   term->rx = -1;
   term->ry = -1;
 
   n = 0;
   while (colorlist[n].name != NULL) {
-      gdk_color_parse(colorlist[n].spec, &clr);
-      term->red[n]   = clr.red;
-      term->green[n] = clr.green;
-      term->blue[n]  = clr.blue;
+      if (!gdk_color_parse(colorlist[n].spec, &term->colors[n])) {
+          g_warning("gdk_color_parse for %s (%s) failed!\n", 
+              colorlist[n].name, colorlist[n].spec);
+      }
       n++;
   }
 
@@ -307,9 +309,9 @@ static void gtk5250_terminal_realize (GtkWidget *widget)
 {
   Gtk5250Terminal *term;
   GdkWindowAttr attributes;
-  GdkColor pen;
+  GdkColormap *colormap;
   gint attributes_mask;
-  gint nallocated;
+  gint n;
 
   g_return_if_fail (widget != NULL);
   g_return_if_fail (GTK5250_IS_TERMINAL (widget));
@@ -346,8 +348,6 @@ static void gtk5250_terminal_realize (GtkWidget *widget)
 
   term->bg_gc = gdk_gc_new (term->client_window);
   term->fg_gc = gdk_gc_new (term->client_window);
-  term->color_ctx = gdk_color_context_new (gtk_widget_get_visual (widget),
-	gtk_widget_get_colormap (widget));
 
   term->sel_gc = gdk_gc_new (term->client_window);
   gdk_gc_set_function(term->sel_gc, GDK_INVERT);
@@ -356,19 +356,28 @@ static void gtk5250_terminal_realize (GtkWidget *widget)
   term->copybuf = NULL;
   term->copybufsize = 0;
 
-  memset (term->colors, 0, sizeof (term->colors));
-  nallocated = 0;
-  gdk_color_context_get_pixels (term->color_ctx,
-      term->red, term->green, term->blue, 9,
-      term->colors, &nallocated);
+  /* allocate colors */
+
+  colormap = gtk_widget_get_colormap(widget);
+
+  n = 0;
+  while (colorlist[n].name != NULL) {
+      if (gdk_colormap_alloc_color(colormap, &term->colors[n], TRUE, TRUE) 
+           == FALSE) {
+         g_warning("gdk_colormap_alloc_color #%d failed (%s)(%s)\n", 
+              n, colorlist[n].name, colorlist[n].spec);
+      }
+      n++;
+  }
+
+  /* create pixmap to act as our backing store */
 
   term->store = gdk_pixmap_new (term->client_window, term->font_80_w * 80,
       (term->font_80_h + 4) * 26, -1);
 
   /*  intialize entire background color to black */
 
-  pen.pixel = term->colors[(A_5250_BLACK >> 8) - 1];
-  gdk_gc_set_foreground (term->bg_gc, &pen);
+  gdk_gc_set_foreground (term->bg_gc, &term->colors[(A_5250_BLACK>>8)-1]);
   gdk_draw_rectangle(term->store, term->bg_gc, TRUE, 0, 0,
       widget->allocation.width+1, widget->allocation.height+1);
 
@@ -396,9 +405,6 @@ static void gtk5250_terminal_unrealize (GtkWidget *widget)
 
   g_source_remove (term->timeout_id);
   term->blink_timeout = 0;
-
-  gdk_color_context_free (term->color_ctx);
-  term->color_ctx = NULL;
 
   gdk_gc_destroy (term->bg_gc);
   term->bg_gc = NULL;
@@ -478,7 +484,6 @@ static void gtk5250_terminal_size_allocate (GtkWidget *widget,
 static gint gtk5250_terminal_expose (GtkWidget *widget, GdkEventExpose *event)
 {
   Gtk5250Terminal *term;
-  GdkColor pen;
   gint y, x;
   GdkFont *font;
   gint font_w, font_h;
@@ -516,8 +521,7 @@ static gint gtk5250_terminal_expose (GtkWidget *widget, GdkEventExpose *event)
 	      term->cells[y][term->rx] |= (guint)A_5250_DIRTYFLAG;
   }
 
-  pen.pixel = term->colors[(A_5250_TURQ >> 8) - 1];
-  gdk_gc_set_foreground (term->fg_gc, &pen);
+  gdk_gc_set_foreground (term->fg_gc, &term->colors[(A_5250_TURQ>>8)-1]);
   gdk_draw_line (term->store,
       term->fg_gc,
       0, (font_h + 4) * term->h + 4, 
@@ -545,8 +549,8 @@ static gint gtk5250_terminal_expose (GtkWidget *widget, GdkEventExpose *event)
        term->ry = term->cy;
        x = term->cx * font_w;
        y = (term->cy * (font_h + 4)) + 4;
-       pen.pixel = term->colors[(A_5250_RULER_COLOR >> 8) - 1];
-       gdk_gc_set_foreground (term->fg_gc, &pen);
+       gdk_gc_set_foreground (term->fg_gc, 
+                              &term->colors[(A_5250_RULER_COLOR>>8)-1]);
        gdk_draw_line (term->store, term->fg_gc,
             0, y, widget->allocation.width - (2*BORDER_WIDTH), y);
        gdk_draw_line (term->store, term->fg_gc,
@@ -561,8 +565,7 @@ static gint gtk5250_terminal_expose (GtkWidget *widget, GdkEventExpose *event)
 	  0, term->h * (font_h + 4) + 5,
 	  (term->w * font_w), font_h + 4);
 
-       pen.pixel = term->colors[(A_5250_WHITE >> 8) - 1];
-       gdk_gc_set_foreground (term->fg_gc, &pen);
+       gdk_gc_set_foreground (term->fg_gc, &term->colors[(A_5250_WHITE>>8)-1]);
        gdk_draw_text (term->store, font, term->fg_gc,
 	   1, (term->h + 1) * (font_h + 4) + 4,
 	   term->ind_buf, 80);
@@ -580,7 +583,6 @@ static gint gtk5250_terminal_expose (GtkWidget *widget, GdkEventExpose *event)
 
 static void gtk5250_terminal_draw_char (Gtk5250Terminal *term, gint y, gint x, guint ch)
 {
-  GdkColor pen;
   GtkWidget *widget;
   GdkGC *fg, *bg;
   gint color_idx;
@@ -619,9 +621,7 @@ static void gtk5250_terminal_draw_char (Gtk5250Terminal *term, gint y, gint x, g
 	color_idx = (A_5250_BLUE >> 8) - 1;
     }
 
-  pen.pixel = term->colors[color_idx];
-  gdk_gc_set_foreground (term->fg_gc, &pen);
-
+  gdk_gc_set_foreground (term->fg_gc, &term->colors[color_idx]);
   if ((ch & A_5250_BLINK) != 0 && !term->blink_state)
     {
       ch = (ch & ~0xff) | (guchar)' ';
@@ -655,12 +655,14 @@ static void gtk5250_terminal_draw_char (Gtk5250Terminal *term, gint y, gint x, g
 	  (x + 1) * font_w - 1, (y + 1) * (font_h + 4) + 3);
     }
 
+#if 0
   if ((ch & A_5250_VERTICAL) != 0)
     {
       gdk_draw_line (term->store, fg,
 	  x * font_w, y * (font_h + 4) + 4,
 	  x * font_w, (y + 1) * (font_h + 4) + 3);
     }
+#endif
 }
 
 /*
@@ -884,6 +886,7 @@ static gboolean gtk5250_terminal_key_press_event (GtkWidget *widget, GdkEventKey
     case GDK_KP_Delete:
     case GDK_Delete:	    term->next_keyval = K_DELETE; break;
     case GDK_Pause:	    term->next_keyval = K_HELP; break;
+    case GDK_Scroll_Lock:   term->next_keyval = K_HELP; break;
 
     /* Extra mappings that just happen to coincide */
     case GDK_Sys_Req:
@@ -1102,7 +1105,6 @@ static void gtkterm_update_indicators (Tn5250Terminal *This, Tn5250Display *dsp)
    * for redraw speed's sake. */
    Gtk5250Terminal *term = GTK5250_TERMINAL (This->data);
    int inds = tn5250_display_indicators(dsp);
-   GdkColor pen;
 
    memset(term->ind_buf, ' ', sizeof(term->ind_buf));
    memcpy(term->ind_buf, "5250", 4);
@@ -1180,6 +1182,12 @@ static int gtkterm_getkey (Tn5250Terminal *tnThis)
 
   keyval = This->next_keyval;
   This->next_keyval = 0;
+
+  if (This->local_print && keyval==K_PRINT) {
+       gtkterm_print_screen(This);
+       keyval = K_RESET;
+  }
+
   return keyval;
 }
 
@@ -1189,8 +1197,8 @@ static void gtk5250_terminal_update_from_config (Gtk5250Terminal *This)
   gint n, r, g, b;
   const gchar *spec;
   GdkColor clr;
-  GdkColor pen;
   gchar temp[15];
+  gboolean success[10];
   
   /* Set the font, width and height, etc. */
   if (This->font_80 != NULL)
@@ -1237,31 +1245,23 @@ static void gtk5250_terminal_update_from_config (Gtk5250Terminal *This)
       This->ruler = tn5250_config_get_bool (This->config, "ruler");
 
   if (tn5250_config_get_bool(This->config, "black_on_white")) {
-      gdk_color_parse("rgb:00/00/00", &clr);
+      gdk_color_parse("#000000", &clr);
       for (n=0; n<(A_5250_GREEN >> 8); n++) {
-           This->red[n]   = clr.red;
-           This->green[n] = clr.green;
-           This->blue[n]  = clr.blue;
+           memcpy(&(This->colors[n]), &clr, sizeof(clr));
       }
-      gdk_color_parse("rgb:ff/ff/ff", &clr);
+      gdk_color_parse("#ffffff", &clr);
       n = (A_5250_BLACK >> 8) - 1;
-      This->red[n]   = clr.red;
-      This->green[n] = clr.green;
-      This->blue[n]  = clr.blue;
+      memcpy(&(This->colors[n]), &clr, sizeof(clr));
   }
 
   if (tn5250_config_get_bool(This->config, "white_on_black")) {
-      gdk_color_parse("rgb:ff/ff/ff", &clr);
+      gdk_color_parse("#ffffff", &clr);
       for (n=0; n<(A_5250_GREEN >> 8); n++) {
-           This->red[n]   = clr.red;
-           This->green[n] = clr.green;
-           This->blue[n]  = clr.blue;
+           memcpy(&(This->colors[n]), &clr, sizeof(clr));
       }
-      gdk_color_parse("rgb:00/00/00", &clr);
+      gdk_color_parse("#000000", &clr);
       n = (A_5250_BLACK >> 8) - 1;
-      This->red[n]   = clr.red;
-      This->green[n] = clr.green;
-      This->blue[n]  = clr.blue;
+      memcpy(&(This->colors[n]), &clr, sizeof(clr));
   }
 
   n = 0;
@@ -1269,17 +1269,13 @@ static void gtk5250_terminal_update_from_config (Gtk5250Terminal *This)
       if ((spec=tn5250_config_get(This->config, colorlist[n].name)) != NULL)  {
           g_print("colorname = %s, config val = %s\n", colorlist[n].name, spec);
           if (gdk_color_parse(spec, &clr)) {
-               This->red[n]   = clr.red;
-               This->green[n] = clr.green;
-               This->blue[n]  = clr.blue;
+               memcpy(&(This->colors[n]), &clr, sizeof(clr));
           }
           else if (tn5250_parse_color(This->config, colorlist[n].name,
                                  &r, &g, &b) != -1)  {
-               sprintf(temp, "rgb:%02x/%02x/%02x", r&0xff, g&0xff, b&0xff);
+               sprintf(temp, "#%02x%02x%02x", r&0xff, g&0xff, b&0xff);
                if (gdk_color_parse(temp, &clr)) {
-                    This->red[n]   = clr.red;
-                    This->green[n] = clr.green;
-                    This->blue[n]  = clr.blue;
+                    memcpy(&This->colors[n], &clr, sizeof(clr));
                }
           }
       }
@@ -1290,11 +1286,14 @@ static void gtk5250_terminal_update_from_config (Gtk5250Terminal *This)
   /*  intialize entire background to "black" color */
 
   if (This->store != NULL && This->bg_gc!=NULL) {
-     pen.pixel = This->colors[(A_5250_BLACK >> 8) - 1];
-     gdk_gc_set_foreground (This->bg_gc, &pen);
+     gdk_gc_set_foreground (This->bg_gc, &This->colors[(A_5250_BLACK>>8)-1]);
      gdk_draw_rectangle(This->store, This->bg_gc, TRUE, 0, 0,
          GTK_WIDGET(This)->allocation.width+1, 
          GTK_WIDGET(This)->allocation.height+1);
+  }
+
+  if (tn5250_config_get_bool(This->config, "local_print_key")) {
+      This->local_print = 1;
   }
 
 }
@@ -1643,3 +1642,299 @@ gtk5250_terminal_queuekey(Gtk5250Terminal *term, gint key) {
            term->k_buf_len ++;
      }
 }
+
+/****i* gtkterm_print_screen
+ * NAME
+ *    gtkterm_print_screen
+ * SYNOPSIS
+ *    gtkterm_print_screen(This, This->data->display);
+ * INPUTS
+ *    Gtk5250Terminal *    This       -
+ *    Tn5250Display  *     display    -
+ * DESCRIPTION
+ *    Generate PostScript output of current screen image.
+ *****/
+void gtkterm_print_screen(Gtk5250Terminal *This) {
+
+   int x, y, c, a;
+   int px, py;
+   int leftmar, topmar;
+   int attr = 0;
+   FILE *out;
+   const char *outcmd;
+   double pgwid, pglen;
+   double colwidth, rowheight, fontsize;
+   int textlen;
+   char *prttext;
+   Tn5250Display *display;
+
+   display = This->display;
+
+   if (display==NULL)
+       return;
+
+   /* default values for printing screens are: */
+
+   outcmd = "lpr";
+   pglen = 11 * 72;
+   pgwid = 8.5 * 72;
+   leftmar = 18;
+   topmar = 36;
+   if (tn5250_display_width(display) == 132)
+        fontsize = 7.0;
+   else
+        fontsize = 10.0;
+
+   /* override defaults with values from config if available */
+       
+   if (This->config != NULL) {
+       int fs80=0, fs132=0;
+       if (tn5250_config_get(This->config, "outputcommand"))
+           outcmd = tn5250_config_get(This->config, "outputcommand");
+       if (tn5250_config_get(This->config, "pagewidth"))
+           pgwid = atoi(tn5250_config_get(This->config, "pagewidth"));
+       if (tn5250_config_get(This->config, "pagelength"))
+           pglen = atoi(tn5250_config_get(This->config, "pagelength"));
+       if (tn5250_config_get(This->config, "leftmargin"))
+           leftmar = atoi(tn5250_config_get(This->config, "leftmargin"));
+       if (tn5250_config_get(This->config, "topmargin"))
+           topmar = atoi(tn5250_config_get(This->config, "topmargin"));
+       if (tn5250_config_get(This->config, "psfontsize_80"))
+           fs80 = atoi(tn5250_config_get(This->config, "psfontsize_80"));
+       if (tn5250_config_get(This->config, "psfontsize_80"))
+           fs132 =atoi(tn5250_config_get(This->config, "psfontsize_132"));
+       if (tn5250_display_width(display)==132 && fs132!=0)
+           fontsize = fs132;
+       if (tn5250_display_width(display)==80 && fs80!=0)
+           fontsize = fs80;
+   }
+        
+   colwidth  = (pgwid - leftmar*2) / tn5250_display_width(display);
+   rowheight = (pglen  - topmar*2) / 66;
+
+ 
+   /* allocate enough memory to store the largest possible string that we
+      could output.   Note that it could be twice the size of the screen
+      if every single character needs to be escaped... */
+
+   prttext = g_malloc((2 * tn5250_display_width(display) *
+                         tn5250_display_height(display)) + 1);
+
+   out = popen(outcmd, "w");
+   if (out == NULL)
+       return;
+
+   fprintf(out, "%%!PS-Adobe-3.0\n");
+   fprintf(out, "%%%%Pages: 1\n");
+   fprintf(out, "%%%%Title: TN5250 Print Screen\n");
+   fprintf(out, "%%%%BoundingBox: 0 0 %.0f %.0f\n", pgwid, pglen);
+   fprintf(out, "%%%%LanguageLevel: 2\n");
+   fprintf(out, "%%%%EndComments\n\n");
+   fprintf(out, "%%%%BeginProlog\n");
+   fprintf(out, "%%%%BeginResource: procset general 1.0.0\n");
+   fprintf(out, "%%%%Title: (General Procedures)\n");
+   fprintf(out, "%%%%Version: 1.0\n");
+   fprintf(out, "%% Courier is a fixed-pitch font, so one character is as\n");
+   fprintf(out, "%%   good as another for determining the height/width\n");
+   fprintf(out, "/Courier %.2f selectfont\n", fontsize);
+   fprintf(out, "/chrwid (W) stringwidth pop def\n");
+   fprintf(out, "/pglen %.2f def\n", pglen);
+   fprintf(out, "/pgwid %.2f def\n", pgwid);
+   fprintf(out, "/chrhgt %.2f def\n", rowheight);
+   fprintf(out, "/leftmar %d def\n", leftmar + 2);
+   fprintf(out, "/topmar %d def\n", topmar);
+   fprintf(out, "/exploc {           %% expand x y to dot positions\n"
+                "   chrhgt mul\n"
+                "   topmar add\n"
+                "   3 add\n"
+                "   pglen exch sub\n"
+                "   exch\n"
+                "   chrwid mul\n"
+                "   leftmar add\n"
+                "   3 add\n"
+                "   exch\n"
+                "} bind def\n");
+   fprintf(out, "/prtnorm {          %% print text normally (text) x y color\n"
+                "   setgray\n"
+                "   exploc moveto\n"
+                "   show\n"
+                "} bind def\n");
+   fprintf(out, "/drawunderline  { %% draw underline: (string) x y color\n"
+                "   gsave\n"
+                "   0 setlinewidth\n"
+                "   setgray\n"
+                "   exploc\n"
+                "   2 sub\n"
+                "   moveto\n"
+                "   stringwidth pop 0\n"
+                "   rlineto\n"
+                "   stroke\n"
+                "   grestore\n"
+                "} bind def\n");
+   fprintf(out, "/blkbox {       %% draw a black box behind the text\n"
+                "   gsave\n"
+                "   newpath\n"
+                "   0 setgray\n"
+                "   exploc\n"
+                "   3 sub\n"
+                "   moveto\n"
+                "   0 chrhgt rlineto\n"
+                "   stringwidth pop 0 rlineto\n"
+                "   0 0 chrhgt sub rlineto\n"
+                "   closepath\n"
+                "   fill\n"
+                "   grestore\n"
+                "} bind def\n");
+   fprintf(out, "/borderbox { %% Print a border around screen dump\n"
+                "   gsave\n"
+                "   newpath\n"
+                "   0 setlinewidth\n"
+                "   0 setgray\n"
+                "   leftmar\n"
+                "   topmar chrhgt sub pglen exch sub\n"
+                "   moveto\n"
+                "   chrwid %d mul 6 add 0 rlineto\n"
+                "   0 0 chrhgt %d mul 6 add sub rlineto\n"
+                "   0 chrwid %d mul 6 add sub 0 rlineto\n"
+                "   closepath\n"
+                "   stroke\n"
+                "   grestore\n"
+                "} bind def\n", 
+                tn5250_display_width(display),
+                tn5250_display_height(display)+1,
+                tn5250_display_width(display));
+   fprintf(out, "%%%%EndResource\n");
+   fprintf(out, "%%%%EndProlog\n\n");
+   fprintf(out, "%%%%Page 1 1\n");
+   fprintf(out, "%%%%BeginPageSetup\n");
+   fprintf(out, "/pgsave save def\n");
+   fprintf(out, "%%%%EndPageSetup\n");
+   
+   textlen = 0;
+   px = -1;
+
+   for (y = 0; y < tn5250_display_height(display); y++) {
+
+      for (x = 0; x < tn5250_display_width(display); x++) {
+
+	 c = tn5250_display_char_at(display, y, x);
+	 if ((c & 0xe0) == 0x20) {
+            if (textlen > 0) {
+                gtkterm_postscript_print(out, px, py, prttext, attr);
+                textlen = 0;
+            }
+	    a = (c & 0xff);
+            attr = attribute_map[a - 0x20];
+            px = -1;
+         } else { 
+            if (px == -1) {
+                px = x;
+                py = y;
+            }
+	    if ((c < 0x40 && c > 0x00) || c == 0xff) { 
+	       c = ' ';
+	    } else {
+	       c = tn5250_char_map_to_local (
+                      tn5250_display_char_map (display), c);
+	    }
+            if (c == '\\' || c == '(' || c == ')') {
+                 prttext[textlen] = '\\';
+                 textlen++;
+            }
+            prttext[textlen] = c;
+            textlen++;
+            prttext[textlen] = '\0';
+         }
+      }
+      if (textlen > 0) {
+          gtkterm_postscript_print(out, px, py, prttext, attr);
+          textlen = 0;
+      }
+      px = -1;
+   }
+
+   fprintf(out, "borderbox\n");
+   fprintf(out, "pgsave restore\n");
+   fprintf(out, "showpage\n");
+   fprintf(out, "%%%%PageTrailer\n");
+   fprintf(out, "%%%%Trailer\n");
+   fprintf(out, "%%%%Pages: 1\n");
+   fprintf(out, "%%%%EOF\n");
+
+   pclose(out);
+
+   g_free(prttext);
+
+   gtk5250_terminal_messagebox("Print Screen Successful.");
+
+   gtkterm_update(&(This->tn5250_impl), display);
+}
+
+
+/****i* gtkterm_postscript_print
+ * NAME
+ *    gtkterm_postscript_print
+ * SYNOPSIS
+ *    gtkterm_postscript_print(out, px, py, "Print this", A_NORMAL);
+ * INPUTS
+ *    FILE           *     out        -
+ *    int                  x          -
+ *    int                  y          -
+ *    char           *     string     -
+ *    attr_t               attr       -
+ * DESCRIPTION
+ *    Adds a printed string to the postscript output generated by 
+ *    gtkterm_print_screen.   Converts the curses attributes
+ *    to attributes understood by postscript (using the procedures
+ *    we put in the prolog of the ps document)
+ *****/
+
+void gtkterm_postscript_print(FILE *out, int x, int y, char *string, int attr) {
+    int color;
+
+    if (attr == 0x00)    /* NONDISPLAY */
+        return;
+
+    color = 0;
+    if (attr & A_5250_REVERSE) {   /* Print white text on black background */
+        color = 1;
+        fprintf(out, "(%s) %d %d blkbox\n", string, x, y);
+    } 
+
+    fprintf(out, "(%s) %d %d %d prtnorm\n", string, x, y, color);
+
+    if (attr & A_5250_UNDERLINE)    /* draw underline below text */
+        fprintf(out, "(%s) %d %d %d drawunderline\n", string, x, y, color);
+
+}
+
+
+/* Function to open a dialog box displaying the message provided. */
+
+static void gtk5250_terminal_messagebox(gchar *message) {
+
+   GtkWidget *dialog, *label, *okay_button;
+   
+   /* Create the widgets */
+   
+   dialog = gtk_dialog_new();
+   label = gtk_label_new (message);
+   okay_button = gtk_button_new_with_label("Ok");
+   
+   /* Ensure that the dialog box is destroyed when the user clicks ok. */
+   
+   gtk_signal_connect_object (GTK_OBJECT (okay_button), "clicked",
+                              GTK_SIGNAL_FUNC (gtk_widget_destroy), 
+                              GTK_OBJECT(dialog));
+   gtk_container_add (GTK_CONTAINER (GTK_DIALOG(dialog)->action_area),
+                      okay_button);
+
+   /* Add the label, and show everything we've added to the dialog. */
+
+   gtk_container_add (GTK_CONTAINER (GTK_DIALOG(dialog)->vbox),
+                      label);
+
+   gtk_window_set_modal (GTK_WINDOW(dialog), TRUE);
+   gtk_widget_show_all (dialog);
+}
+

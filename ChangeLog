@@ -1,3 +1,8 @@
+Sat Mar 06, 2004 Scott Klement <klemscot@klements.com>
+	* Upgraded to use GTK+-2.0, Glib-2.0, etc
+	* Note that at the moment, gnome-5250 is not being built, IMHO,
+	   it's redundant, anyway.  If someone needs it, please let me know.
+
 Mon Aug 25, 2003 Scott Klement <klemscot@klements.com>
 	* Added mapping of Ctrl-T to the 5250 K_TESTREQ function 
 

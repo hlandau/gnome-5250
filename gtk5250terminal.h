@@ -19,9 +19,9 @@
  * the Free Software Foundation, Inc., 59 Temple Place, Suite 330,
  * Boston, MA 02111-1307 USA */
 
-#ifdef __cplusplus
-extern "C" {
-#endif /* __cplusplus */
+#include <glib.h>
+
+G_BEGIN_DECLS
 
 #include <tn5250.h>
 
@@ -61,17 +61,14 @@ struct _Gtk5250Terminal
   GdkWindow*	    client_window;
   GdkGC*	    bg_gc;
   GdkGC*	    fg_gc;
-  GdkColorContext*  color_ctx;
 
-  gushort	    red[10];
-  gushort	    green[10];
-  gushort	    blue[10];
-  gulong	    colors[10];
+  GdkColor	    colors[10];
   guint		    blink_timeout;
   guint		    timeout_id;
 
   gint		    blink_state : 1;	/* Is blink currently on? */
   gint              ruler : 1;
+  gint		    local_print : 1;
 
   gint		    cx, cy, w, h;       /* Cursor position/display size. */
   guint		    cells[28][132];	/* Data currently on display. */
@@ -96,9 +93,7 @@ GtkType		gtk5250_terminal_get_type	(void);
 GtkWidget*	gtk5250_terminal_new		(void);
 Tn5250Terminal*	gtk5250_terminal_get_impl	(Gtk5250Terminal *This);
 
-#ifdef __cplusplus
-}
-#endif /* __cplusplus */
+G_END_DECLS
 
 #endif /* __GTK5250_TERMINAL_H__ */
 

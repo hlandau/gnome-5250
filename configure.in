@@ -2,84 +2,29 @@ dnl Process this file with autoconf to produce a configure script.
 AC_INIT(gnome-5250.c)
 AM_INIT_AUTOMAKE(gnome-5250,0.2)
 
-GNOME=yes
-AC_ARG_ENABLE(gnome,[   --disable-gnome        Build without Gnome support.],
-[ GNOME="$enableval"])
-
 dnl Checks for programs.
 AC_PROG_CC
 
 dnl *
-dnl * Checks for Gnome and Gnome features.
-dnl *
-AM_CONDITIONAL(GNOME, test x$GNOME != xno)
-if test x$GNOME != xno ; then
-	dnl *
-	dnl * Get Gnome configuration.
-	dnl *
-	AC_PATH_PROG(GNOME_CONFIG,gnome-config,no)
-	if test x$GNOME_CONFIG = xno ; then
-		AC_MSG_ERROR(** Can't find gnome-config.  Is Gnome installed? **)
-	fi
-	AC_MSG_CHECKING(for Gnome C flags)
-	GNOME_CFLAGS="`$GNOME_CONFIG --cflags glib gnome gnomeui`"
-	CFLAGS="$CFLAGS $GNOME_CFLAGS"
-	AC_MSG_RESULT($GNOME_CFLAGS)
-	AC_MSG_CHECKING(for Gnome libs)
-	GNOME_LIBS="`$GNOME_CONFIG --libs glib gnome gnomeui`"
-	LIBS="$LIBS $GNOME_LIBS"
-	AC_MSG_RESULT($GNOME_LIBS)
-else
-	dnl *
-	dnl * Not using gnome, so look for glib and GTK+ instead.
-	dnl *
-	AC_PATH_PROG(GLIB_CONFIG,glib-config,no)
-	if test x$GLIB_CONFIG = xno ; then
-		AC_MSG_ERROR(** Can't find glib-config.  Is glib installed? **)
-	fi
-	AC_MSG_CHECKING(for glib C flags)
-	GLIB_CFLAGS="`$GLIB_CONFIG --cflags glib`"
-	CFLAGS="$CFLAGS $GLIB_CFLAGS"
-	AC_MSG_RESULT($GLIB_CFLAGS)
-	AC_MSG_CHECKING(for glib libs)
-	GLIB_LIBS="`$GLIB_CONFIG --libs glib`"
-	LIBS="$LIBS $GLIB_LIBS"
-	AC_MSG_RESULT($GLIB_LIBS)
-
-	AC_PATH_PROG(GTK_CONFIG,gtk-config,no)
-	if test x$GTK_CONFIG = xno ; then
-		AC_MSG_ERROR(** Can't find gtk-config.  Is GTK+ installed? **)
-	fi
-	AC_MSG_CHECKING(for GTK+ C flags)
-	GTK_CFLAGS="`$GTK_CONFIG --cflags gtk`"
-	CFLAGS="$CFLAGS $GTK_CFLGAS"
-	AC_MSG_RESULT($GTK_CFLAGS)
-	AC_MSG_CHECKING(for GTK+ libs)
-	GTK_LIBS="`$GTK_CONFIG --libs gtk`"
-	LIBS="$LIBS $GTK_LIBS"
-	AC_MSG_RESULT($GTK_LIBS)
-fi
-
-dnl *
 dnl * Checks for lib5250 and lib5250 features.
 dnl *
-AC_PATH_PROG(TN5250_CONFIG,tn5250-config,no)
+AC_PATH_PROG(TN5250_CONFIG,pkg-config,no)
 if test x$TN5250_CONFIG = xno ; then
-	AC_MSG_ERROR(** Can't find tn5250-config.  Is tn5250 installed? **)
+	AC_MSG_ERROR(** Can't find pkg-config.  Is pkg-config installed? **)
 fi
 AC_MSG_CHECKING(for lib5250 C flags)
-TN5250_CFLAGS="`$TN5250_CONFIG --cflags`"
+TN5250_CFLAGS="`$TN5250_CONFIG --cflags tn5250`"
 CFLAGS="$CFLAGS $TN5250_CFLAGS"
 AC_MSG_RESULT($TN5250_CFLAGS)
 AC_MSG_CHECKING(for lib5250 libs)
-TN5250_LIBS="`$TN5250_CONFIG --libs`"
+TN5250_LIBS="`$TN5250_CONFIG --libs tn5250`"
 LIBS="$LIBS $TN5250_LIBS"
 AC_MSG_RESULT($TN5250_LIBS)
 
 AM_MAINTAINER_MODE
 
 dnl Checks for libraries.
-AC_CHECK_LIB(ibs, main)
+AM_PATH_GTK_2_0(2.0.0,,AC_MSG_ERROR(gnome-5250 needs GTK+ 2.0))
 
 dnl Checks for header files.
 

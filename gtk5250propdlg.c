@@ -53,17 +53,22 @@ GtkType gtk5250_prop_dlg_get_type ()
   static GtkType prop_dlg_type = 0;
   if (!prop_dlg_type)
     {
-      GtkTypeInfo type_info =
+      static const GTypeInfo prop_dlg_info =
 	{
-	  "Gtk5250PropDlg",
-	  sizeof (Gtk5250PropDlg),
 	  sizeof (Gtk5250PropDlgClass),
-	  (GtkClassInitFunc) gtk5250_prop_dlg_class_init,
-	  (GtkObjectInitFunc) gtk5250_prop_dlg_init,
-	  (GtkArgSetFunc) NULL,
-	  (GtkArgGetFunc) NULL
+	  NULL,  /* base_init */
+	  NULL,  /* base_finalize */
+	  (GClassInitFunc) gtk5250_prop_dlg_class_init,
+	  NULL,  /* class_finalize */
+	  NULL,  /* class_data */
+          sizeof (Gtk5250PropDlg),
+	  0,     /* n_preallocs */
+	  (GInstanceInitFunc) gtk5250_prop_dlg_init,
 	};
-      prop_dlg_type = gtk_type_unique (gtk_dialog_get_type (), &type_info);
+      prop_dlg_type = g_type_register_static (GTK_TYPE_WIDGET,
+	                                     "Gtk5250PropDlg",
+					     &prop_dlg_info,
+					     0);
     }
   return prop_dlg_type;
 }
@@ -212,9 +217,11 @@ static void gtk5250_prop_dlg_init (Gtk5250PropDlg *This)
   gtk_notebook_append_page (GTK_NOTEBOOK (notebook), page, label);
   gtk_widget_show (page);
   gtk_widget_show (label);
+#if 0
   gtk_font_selection_set_filter (GTK_FONT_SELECTION (This->font_selector),
       GTK_FONT_FILTER_BASE, GTK_FONT_ALL, 
       NULL, NULL, NULL, NULL, font_spacings, NULL);
+#endif
 
   /* Add the 'Colors' page to the notebook. */
   label = uline_label ("C_olors");
@@ -479,7 +486,9 @@ static gchar *get_option_menu_label (GtkWidget *option_menu)
 
   arg.type = 0;
   arg.name = "label";
+#if 0
   gtk_object_arg_get (GTK_OBJECT (option_menu), &arg, NULL);
+#endif
   return GTK_VALUE_STRING(arg);
 }
 
