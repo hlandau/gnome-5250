@@ -37,6 +37,11 @@ static GnomeUIInfo main_menu[] = {
    GNOMEUIINFO_END
 };
 
+Tn5250Session *tnsess;
+Tn5250Terminal *tnterm;
+Tn5250Stream *tnstream;
+gchar *remotehost;
+
 /*
  *    Program entry point.
  */
@@ -45,8 +50,16 @@ int main (int argc, char *argv[])
    GtkWidget *app;
    GtkWidget *term;
 
+   /* This is _really_ ugly, but I'm working on other things right now ... */
+   if(argc != 2)
+      {
+	 fprintf (stderr,"Ack! THPTHT!  Usage: gnome-5250 [telnet:]remotehost[:port]\n");
+	 return 255;
+      }
+   remotehost = argv[1];
+
    gnome_init ("gnome-5250", VERSION, argc, argv);
-   
+
    app = gnome_app_new ("gnome-5250", N_("Gnome 5250 Emulator"));
    gnome_app_create_menus (GNOME_APP (app), main_menu);
 
@@ -59,7 +72,24 @@ int main (int argc, char *argv[])
 
    gtk_widget_show (app);
 
-   gtk_main ();
+   tn5250_settransmap("en"); /* FIXME: */
+
+   tnstream = tn5250_stream_open (remotehost);
+   if(tnstream == NULL)
+      return 255; /* FIXME: An error message would be nice. */
+
+   tnterm = gtk5250_terminal_get_impl(GTK5250_TERMINAL(term));
+
+   tnsess = tn5250_session_new();
+   tn5250_session_set_terminal(tnsess, tnterm);
+   tn5250_stream_setenv(tnstream, "TERM", "IBM-3477-FC");
+
+   /* FIXME: Set DEVNAME */
+
+   tnterm->conn_fd = tn5250_stream_socket_handle(tnstream);
+   tn5250_session_set_stream(tnsess, tnstream);
+
+   tn5250_session_main_loop(tnsess);
    return 0;
 }
 
@@ -89,7 +119,7 @@ static void file_preferences_callback ()
  */
 static void file_exit_callback ()
 {
-   gtk_main_quit ();
+   gtk_exit(0);
 }
 
 /*
