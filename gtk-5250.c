@@ -79,6 +79,7 @@ get_main_menu (GtkWidget * window,
   if (menubar)
     /* Finally, return the actual menu bar created by the item factory. */
     *menubar = gtk_item_factory_get_widget (item_factory, "<main>");
+
 }
 
 static void 
@@ -97,6 +98,7 @@ main (int argc, char *argv[])
   GtkWidget *term_window;
   GtkWidget *vbox;
   GtkWidget *menu;
+  GtkSettings *settings;
 
   gtk_init (&argc, &argv);
 
@@ -129,6 +131,11 @@ main (int argc, char *argv[])
       gtk_box_pack_start (GTK_BOX (vbox), menu, FALSE, TRUE, 0);
       gtk_widget_show (menu);
     }
+
+  settings = gtk_widget_get_settings(app);
+  gtk_settings_set_string_property(settings, "gtk-menu-bar-accel", 
+        "VoidSymbol", "gtk-5250");
+
 
   term_window = gtk5250_terminal_new ();
   gtk_box_pack_end (GTK_BOX (vbox), term_window, TRUE, TRUE, 0);
