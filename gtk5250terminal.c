@@ -53,7 +53,7 @@ static void gtk5250_terminal_size_allocate (GtkWidget *widget,
     GtkAllocation *allocation);
 static gint gtk5250_terminal_expose (GtkWidget *widget, GdkEventExpose *event);
 static void gtk5250_terminal_destroy (GtkObject *object);
-static void gtk5250_terminal_draw_char (Gtk5250Terminal *term, gint y, gint x, gint ch);
+static void gtk5250_terminal_draw_char (Gtk5250Terminal *term, gint y, gint x, guint ch);
 static void gtk5250_terminal_blink_timeout (Gtk5250Terminal *term);
 static void gtk5250_terminal_map (GtkWidget *widget);
 static void gtk5250_terminal_unmap (GtkWidget *widget);
@@ -72,6 +72,7 @@ static void gtkterm_update_indicators (Tn5250Terminal *This, Tn5250Display *dsp)
 static int gtkterm_waitevent (Tn5250Terminal *This);
 static int gtkterm_getkey (Tn5250Terminal *This);
 static void gtkterm_beep (Tn5250Terminal *This);
+static int gtkterm_config (Tn5250Terminal *This, Tn5250Config *config);
 
 static GtkWidgetClass *parent_class = NULL;
 
@@ -193,6 +194,7 @@ static void gtk5250_terminal_init (Gtk5250Terminal *term)
   }
 
   memset (term->cells, 0, sizeof (term->cells));
+  memset (term->ind_buf, ' ', sizeof (term->ind_buf));
 
   term->conn_tag = 0;
   term->pending = 0;
@@ -209,6 +211,7 @@ static void gtk5250_terminal_init (Gtk5250Terminal *term)
   term->tn5250_impl.waitevent = gtkterm_waitevent;
   term->tn5250_impl.getkey = gtkterm_getkey;
   term->tn5250_impl.beep = gtkterm_beep;
+  term->tn5250_impl.config = gtkterm_config;
 
   term->tn5250_impl.conn_fd = -1;
   term->tn5250_impl.data = (void*)term;
@@ -242,7 +245,6 @@ static void gtk5250_terminal_realize (GtkWidget *widget)
 {
   Gtk5250Terminal *term;
   GdkWindowAttr attributes;
-  GdkColor pen;
   gint attributes_mask;
   gint nallocated;
 
@@ -289,7 +291,7 @@ static void gtk5250_terminal_realize (GtkWidget *widget)
       term->colors, &nallocated);
 
   term->store = gdk_pixmap_new (term->client_window, term->font_w * 80,
-      (term->font_h + 4) * 25, -1);
+      (term->font_h + 4) * 26, -1);
 
   term->blink_timeout = gtk_timeout_add (500,
       (GtkFunction)gtk5250_terminal_blink_timeout, term);
@@ -335,7 +337,6 @@ static void gtk5250_terminal_unrealize (GtkWidget *widget)
 static void gtk5250_terminal_size_request (GtkWidget *widget,
     GtkRequisition *requisition)
 {
-  gint h, w;
   Gtk5250Terminal *term;
 
   g_return_if_fail (widget != NULL);
@@ -386,14 +387,15 @@ static gint gtk5250_terminal_expose (GtkWidget *widget, GdkEventExpose *event)
 
   term = GTK5250_TERMINAL (widget); 
 
-  gdk_window_clear (widget->window);
+  /* gdk_window_clear (widget->window); */
 
   pen.pixel = term->colors[(A_5250_TURQ >> 8) - 1];
   gdk_gc_set_foreground (term->fg_gc, &pen);
   gdk_draw_line (term->store,
       term->fg_gc,
-      0, (term->font_h + 4) * term->h + 3, 
-      widget->allocation.width - (2 * BORDER_WIDTH), (term->font_h + 4) * term->h + 3 );
+      0, (term->font_h + 4) * term->h + 4, 
+      widget->allocation.width - (2 * BORDER_WIDTH),
+      (term->font_h + 4) * term->h + 4 );
 
   for (y = 0; y < 27; y++)
     {
@@ -411,17 +413,29 @@ static gint gtk5250_terminal_expose (GtkWidget *widget, GdkEventExpose *event)
 
   if (GTK_WIDGET_DRAWABLE (widget))
     {
+      /* Draw indicators. */
+      gdk_draw_rectangle (term->store, term->bg_gc, 1,
+	  0, term->h * (term->font_h + 4) + 4,
+	  term->font_w, term->font_h + 4);
+
+       pen.pixel = term->colors[(A_5250_WHITE >> 8) - 1];
+       gdk_gc_set_foreground (term->fg_gc, &pen);
+       gdk_draw_text (term->store, term->font, term->fg_gc,
+	   1, (term->h + 1) * (term->font_h + 4) + 4,
+	   term->ind_buf, 80);
+
       gdk_draw_pixmap (term->client_window, term->fg_gc,
 	  term->store,
 	  event->area.x, event->area.y, /* Source coordinates */
 	  event->area.x, event->area.y, /* Dest coordinates */
 	  event->area.width, event->area.height);
+
     }
 
   return FALSE;
 }
 
-static void gtk5250_terminal_draw_char (Gtk5250Terminal *term, gint y, gint x, gint ch)
+static void gtk5250_terminal_draw_char (Gtk5250Terminal *term, gint y, gint x, guint ch)
 {
   GdkColor pen;
   GtkWidget *widget;
@@ -470,7 +484,7 @@ static void gtk5250_terminal_draw_char (Gtk5250Terminal *term, gint y, gint x, g
       x * term->font_w, y * (term->font_h + 4) + 4,
       term->font_w, term->font_h + 4);
 
-  c = (ch & 0xff);
+  c = (ch & 0x00ff);
   gdk_draw_text (term->store, term->font, fg,
       x * term->font_w + 1, (y + 1) * (term->font_h + 4) + 1,
       &c, 1);
@@ -573,8 +587,8 @@ static gboolean gtk5250_terminal_key_press_event (GtkWidget *widget, GdkEventKey
 {
   Gtk5250Terminal *term;
 
-  g_return_if_fail(widget != NULL);
-  g_return_if_fail(GTK5250_IS_TERMINAL(widget));
+  g_return_val_if_fail(widget != NULL, FALSE);
+  g_return_val_if_fail(GTK5250_IS_TERMINAL(widget), FALSE);
 
   term = GTK5250_TERMINAL(widget);
 
@@ -638,8 +652,13 @@ static int gtkterm_flags (Tn5250Terminal *This)
 
 static void gtkterm_beep (Tn5250Terminal *This)
 {
-  g_print ("beep!\n");
   gdk_beep();
+}
+
+static int gtkterm_config (Tn5250Terminal *This, Tn5250Config *config)
+{
+  /* FIXME: Load config info. */
+  return 0;
 }
 
 static void gtkterm_update (Tn5250Terminal *tnThis, Tn5250Display *dsp)
@@ -668,29 +687,32 @@ static void gtkterm_update (Tn5250Terminal *tnThis, Tn5250Display *dsp)
 	  if ((c & 0xe0) == 0x20)
 	    {
 	      a = (c & 0xff);
-	      /* Display actual attribute characters as if they had an attribute 0x20 */
-	      if (This->cells[y][x] != (((guchar)' ') | attribute_map[0]))
-		This->cells[y][x] = ' ' | attribute_map[0] | A_5250_DIRTYFLAG;
+	      if (This->cells[y][x] != ((guint)' ' | attribute_map[0]))
+		This->cells[y][x] = A_5250_GREEN | A_5250_DIRTYFLAG | ' ';
 	    }
 	  else
 	    {
 	      attrs = attribute_map[a - 0x20];
 	      if(attrs == 0) /* NONDISPLAY */
 		{
-		  if (This->cells[y][x] != (((guchar)' ') | attrs))
-		    This->cells[y][x] = ' ' | attrs | A_5250_DIRTYFLAG;
+		  if (This->cells[y][x] != (attrs | (guint)' '))
+		    This->cells[y][x] = attrs | A_5250_DIRTYFLAG | (guint)' ';
 		}
 	      else
 		{
-		  if ((c < 0x40 && c > 0x00) || c == 0xff) /* UNPRINTABLE */
+		  /* UNPRINTABLE -- print block */
+		  if ((c==0x1f) || (c==0x3f))
 		    {
 		      c = ' ';
 		      attrs ^= A_5250_REVERSE;
 		    }
+		  /* UNPRINTABLE -- print blank */
+		  else if ((c < 0x40 && c > 0x00) || c == 0xff)
+		    c = ' ';
 		  else
-		    c = tn5250_ebcdic2ascii(c);
-		  if (This->cells[y][x] != (c | attrs))
-		    This->cells[y][x] = c | attrs | A_5250_DIRTYFLAG;
+		    c = tn5250_char_map_to_local (tn5250_display_char_map (dsp), c);
+		  if (This->cells[y][x] != (attrs | (guint)c))
+		    This->cells[y][x] = attrs | A_5250_DIRTYFLAG | (guint)c;
 		}
 	    }
 	}
@@ -715,7 +737,31 @@ static void gtkterm_update (Tn5250Terminal *tnThis, Tn5250Display *dsp)
 
 static void gtkterm_update_indicators (Tn5250Terminal *This, Tn5250Display *dsp)
 {
-  /* FIXME: Implement. */
+  /* FIXME: We should use the graphical indicators instead. */
+  /* FIXME: We should at least character buffer this like we do the display
+   * for redraw speed's sake. */
+   Gtk5250Terminal *term = GTK5250_TERMINAL (This->data);
+   int inds = tn5250_display_indicators(dsp);
+   GdkColor pen;
+
+   memset(term->ind_buf, ' ', sizeof(term->ind_buf));
+   memcpy(term->ind_buf, "5250", 4);
+   if ((inds & TN5250_DISPLAY_IND_MESSAGE_WAITING) != 0)
+      memcpy(term->ind_buf + 23, "MW", 2);
+   if ((inds & TN5250_DISPLAY_IND_INHIBIT) != 0)
+      memcpy(term->ind_buf + 9, "X II", 4);
+   else if ((inds & TN5250_DISPLAY_IND_X_CLOCK) != 0)
+      memcpy(term->ind_buf + 9, "X CLOCK", 7);
+   else if ((inds & TN5250_DISPLAY_IND_X_SYSTEM) != 0)
+      memcpy(term->ind_buf + 9, "X SYSTEM", 8);
+   if ((inds & TN5250_DISPLAY_IND_INSERT) != 0)
+      memcpy(term->ind_buf + 30, "IM", 2);
+   if ((inds & TN5250_DISPLAY_IND_FER) != 0)
+      memcpy(term->ind_buf + 33, "FER", 3);
+   sprintf(term->ind_buf+72,"%03.3d/%03.3d",tn5250_display_cursor_x(dsp)+1,
+      tn5250_display_cursor_y(dsp)+1);
+
+   /* FIXME: queue draw. */
 }
 
 static int gtkterm_waitevent (Tn5250Terminal *tnThis)
@@ -766,8 +812,9 @@ static int gtkterm_getkey (Tn5250Terminal *tnThis)
   /* You can look up the symbols below in /usr/include/gdk/gdkkeysyms.h */
   switch (keyval)
     {
-    case 0:		    return -1;	      /* Tell the key handling loop in session.c
-						 that we have no more keys. */
+    case 0:		    return -1;	      /* Tell the key handling loop in
+						 session.c that we have no
+						 more keys. */
 
     case GDK_Left:	    return K_LEFT;
     case GDK_Up:	    return K_UP;
@@ -811,12 +858,10 @@ static int gtkterm_getkey (Tn5250Terminal *tnThis)
     case GDK_Escape:	    return K_SYSREQ;
     case GDK_Pause:	    return K_HELP;
 
-
     /* Extra mappings that just happen to coincide */
     case GDK_Print:	    return K_PRINT;
     case GDK_Help:	    return K_HELP;
    
-
     /* Map the 3270 codes ;) */
     case GDK_3270_Duplicate:return K_DUPLICATE;
     case GDK_3270_BackTab:  return K_BACKTAB;
@@ -835,4 +880,4 @@ static int gtkterm_getkey (Tn5250Terminal *tnThis)
   return -1;
 }
 
-/* vi:set sts=2 sw=2: */
+/* vi:set ts=8 sts=2 sw=2 cindent cinoptions=^-2,p8,{.75s,f0,>4,n-2,:0: */

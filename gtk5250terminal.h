@@ -65,6 +65,7 @@ struct _Gtk5250Terminal
 
   gint		    cx, cy, w, h;       /* Cursor position/display size. */
   guint		    cells[27][132];	/* Data currently on display. */
+  gchar		    ind_buf[80];	/* Indicator buffer. */
 };
 
 struct _Gtk5250TerminalClass
