@@ -1,3 +1,11 @@
+Fri May 05, 2000 Jay 'Eraserhead' Felice <jfelice@cronosys.com>
+	* Fixed up so it works with current version in CVS (0.15.8+)
+	* Fixed bug where it was drawing a space in the last attribute
+	  (instead of in the normal attribute) for the actual attribute
+	  character.
+	* Supplied dummy 'config' terminal method.
+	* Implemented indicators, corrected screen redraw issues.
+
 Fri Dec 17, 1999  Jay 'Eraserhead' Felice <jasonf@nacs.net>
 	* Added support for compiling with GTK+ but without Gnome.
 	* Added BUGS file, gtk-5250.c
@@ -15,9 +23,3 @@ Sat Nov 20, 1999  Jay 'Eraserhead' Felice <jasonf@nacs.net>
 	  mallocs, frees, etc.
 	* Implemented 'beep' terminal method.
 
-Fri May 05, 2000 Jay 'Eraserhead' Felice <jfelice@cronosys.com>
-	* Fixed up so it works with current version in CVS (0.15.8+)
-	* Fixed bug where it was drawing a space in the last attribute
-	  (instead of in the normal attribute) for the actual attribute
-	  character.
-	* Supplied dummy 'config' terminal method.

@@ -16,6 +16,7 @@
  * the Free Software Foundation, Inc., 59 Temple Place, Suite 330,
  * Boston, MA 02111-1307 USA */
 
+#include <string.h>
 #include <gtk/gtk.h>
 #include <gdk/gdkkeysyms.h>
 #include "gtk5250terminal.h"
@@ -414,9 +415,9 @@ static gint gtk5250_terminal_expose (GtkWidget *widget, GdkEventExpose *event)
   if (GTK_WIDGET_DRAWABLE (widget))
     {
       /* Draw indicators. */
-      gdk_draw_rectangle (term->store, term->bg_gc, 1,
-	  0, term->h * (term->font_h + 4) + 4,
-	  term->font_w, term->font_h + 4);
+       gdk_draw_rectangle (term->store, term->bg_gc, 1,
+	  0, term->h * (term->font_h + 4) + 5,
+	  (80 * term->font_w), term->font_h + 4);
 
        pen.pixel = term->colors[(A_5250_WHITE >> 8) - 1];
        gdk_gc_set_foreground (term->fg_gc, &pen);
@@ -725,14 +726,18 @@ static void gtkterm_update (Tn5250Terminal *tnThis, Tn5250Display *dsp)
       This->cy = tn5250_display_cursor_y (dsp);
       This->cx = tn5250_display_cursor_x (dsp);
       This->cells[This->cy][This->cx] |= A_5250_DIRTYFLAG;
-    }
 
-  This->blink_state = 1;
-  /* Don't draw entire area if we can avoid it. */
-  area.x = area.y = 0;
-  area.width = This->font_w * This->w;
-  area.height = (This->font_h + 4) * This->h + 4;
-  gtk_widget_draw ((GtkWidget*) This, &area);
+      gtkterm_update_indicators (tnThis, dsp);
+    }
+  else
+    {
+      This->blink_state = 1;
+      /* Don't draw entire area if we can avoid it. */
+      area.x = area.y = 0;
+      area.width = This->font_w * This->w;
+      area.height = (This->font_h + 4) * This->h + 4;
+      gtk_widget_draw ((GtkWidget*) This, &area);
+    }
 }
 
 static void gtkterm_update_indicators (Tn5250Terminal *This, Tn5250Display *dsp)
@@ -758,10 +763,12 @@ static void gtkterm_update_indicators (Tn5250Terminal *This, Tn5250Display *dsp)
       memcpy(term->ind_buf + 30, "IM", 2);
    if ((inds & TN5250_DISPLAY_IND_FER) != 0)
       memcpy(term->ind_buf + 33, "FER", 3);
+
    sprintf(term->ind_buf+72,"%03.3d/%03.3d",tn5250_display_cursor_x(dsp)+1,
       tn5250_display_cursor_y(dsp)+1);
+   *strchr(term->ind_buf, 0) = ' ';
 
-   /* FIXME: queue draw. */
+   gtk_widget_queue_draw ((GtkWidget*) term);
 }
 
 static int gtkterm_waitevent (Tn5250Terminal *tnThis)

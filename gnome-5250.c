@@ -18,6 +18,7 @@
 
 #include <gnome.h>
 #include "gtk5250terminal.h"
+#include "gtk5250propdlg.h"
 
 static void file_connect_callback (void);
 static void file_disconnect_callback (void);
@@ -55,9 +56,18 @@ Tn5250Display *display = NULL;
 Tn5250Config *config = NULL;
 const char *tracefile = NULL;
 
+static void bomb_out (const gchar *msg)
+{
+  GtkWidget *mb;
+  mb = gnome_message_box_new (msg, GNOME_MESSAGE_BOX_ERROR, _("Ok"), NULL);
+  gtk_widget_show (mb);
+  gtk_main ();
+  exit (1); /* FIXME: Implement. */
+}
+
 static void syntax (void)
 {
-  exit (1); /* FIXME: Implement. */
+  bomb_out ("Syntax error.");
 }
 
 /*
@@ -104,52 +114,61 @@ int main (int argc, char *argv[])
    if (tracefile != NULL)
       tn5250_log_open (tracefile);
 #endif
-   
-   stream = tn5250_stream_open (tn5250_config_get (config, "host"));
-   if (stream == NULL)
-      return 255; /* FIXME: An error message would be nice. */
-   if (tn5250_stream_config (stream, config) == -1)
-      return 255; /* FIXME: An error message would be nice. */
+
+   if (tn5250_config_get (config, "host"))
+     {
+       stream = tn5250_stream_open (tn5250_config_get (config, "host"));
+       if (stream == NULL)
+	  bomb_out ( _("Could not connect to host.") );
+       if (tn5250_stream_config (stream, config) == -1)
+	  syntax ();
+     }
+   else
+     stream = NULL;
 
    display = tn5250_display_new ();
    if (display == NULL)
-     return 255; /* FIXME: Error Message. */
+     bomb_out ( _("Could not create display.") );
    if (tn5250_display_config (display, config) == -1)
-      return 255; /* FIXME: An error message would be nice. */
+     syntax ();
 
    term = gtk5250_terminal_get_impl(GTK5250_TERMINAL(term_window));
    if (term == NULL)
-      return 255; /* FIXME: An error message would be nice. */
+     bomb_out ( _("Could not create terminal.") );
    if (tn5250_terminal_config (term, config) == -1)
-      return 255; /* FIXME: An error message would be nice. */
+     syntax ();
 #ifndef NDEBUG
    /* Shrink-wrap the terminal with the debug terminal, if appropriate. */
-   {
-      const char *remotehost = tn5250_config_get (config, "host");
-      if (strlen (remotehost) >= 6
-	    && !memcmp (remotehost, "debug:", 6)) {
-	 Tn5250Terminal *dbgterm = tn5250_debug_terminal_new (term, stream);
-	 if (dbgterm == NULL) {
-	    tn5250_terminal_destroy (term);
-	    return 255; /* FIXME: Error message. */
-	 }
-	 term = dbgterm;
-	 if (tn5250_terminal_config (term, config) == -1)
-	   return 255; /* FIXME: Error message. */
-      }
-   }
+   if (stream != NULL)
+     {
+	const char *remotehost = tn5250_config_get (config, "host");
+	if (strlen (remotehost) >= 6
+	      && !memcmp (remotehost, "debug:", 6)) {
+	   Tn5250Terminal *dbgterm = tn5250_debug_terminal_new (term, stream);
+	   if (dbgterm == NULL) {
+	      tn5250_terminal_destroy (term);
+	      bomb_out ( _("Could not create debug terminal.") );
+	   }
+	   term = dbgterm;
+	   if (tn5250_terminal_config (term, config) == -1)
+	     syntax ();
+	}
+     }
 #endif
    tn5250_terminal_init (term);
    tn5250_display_set_terminal (display, term);
 
    sess = tn5250_session_new();
    if (sess == NULL)
-     return 255; /* FIXME: Error message. */
+     bomb_out ( _("Could not create session.") );
    tn5250_display_set_session (display, sess);
-   tn5250_session_set_stream (sess, stream);
-   term->conn_fd = tn5250_stream_socket_handle (stream);
+   if (stream != NULL)
+     {
+       tn5250_session_set_stream (sess, stream);
+       term->conn_fd = tn5250_stream_socket_handle (stream);
+      }
    if (tn5250_session_config (sess, config) == -1)
-      return 255; /* FIXME: An error message would be nice. */
+     syntax ();
 
    gtk_widget_show (app);
    tn5250_session_main_loop (sess);
@@ -175,6 +194,13 @@ static void file_disconnect_callback ()
  */
 static void file_preferences_callback ()
 {
+  static GtkWidget *dlg = NULL;
+
+  if (dlg == NULL)
+    dlg = gtk5250_prop_dlg_new ();
+
+  gtk_widget_show (dlg);
+  /* FIXME: Raise window. */
 }
 
 /*
