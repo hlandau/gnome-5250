@@ -1,3 +1,7 @@
+Mon May 22, 2000 Jay 'Eraserhead' Felice <jfelice@cronosys.com>
+	* Added keyboard mapping for most of keypad, handle of Shift+Tab =
+	  backtab.  Shift+Esc = SysReq and Esc is Attention, etc.
+
 Wed May 17, 2000 Jay 'Eraserhead' Felice <jfelice@cronosys.com>
 	* Added TODO file.  Some work on propogating the config object to
 	  all the proper components (specifically the Gtk5250PropDlg).

@@ -659,24 +659,134 @@ static gboolean gtk5250_terminal_key_press_event (GtkWidget *widget, GdkEventKey
 
   term->pending |= TN5250_TERMINAL_EVENT_KEY; 
   term->next_keyval = event->keyval;
-  if ((event->state & GDK_SHIFT_MASK) != 0)
+
+  /* We need to translate Shift+Fkey ourselves... */
+  /* You can look up the symbols below in /usr/include/gdk/gdkkeysyms.h */
+  switch (term->next_keyval)
     {
-      /* We need to translate Shift+Fkey ourselves... */
-      switch (term->next_keyval)
-	{
-	case GDK_F1:  term->next_keyval = GDK_F13; break;
-	case GDK_F2:  term->next_keyval = GDK_F14; break;
-	case GDK_F3:  term->next_keyval = GDK_F15; break;
-	case GDK_F4:  term->next_keyval = GDK_F16; break;
-	case GDK_F5:  term->next_keyval = GDK_F17; break;
-	case GDK_F6:  term->next_keyval = GDK_F18; break;
-	case GDK_F7:  term->next_keyval = GDK_F19; break;
-	case GDK_F8:  term->next_keyval = GDK_F20; break;
-	case GDK_F9:  term->next_keyval = GDK_F21; break;
-	case GDK_F10: term->next_keyval = GDK_F22; break;
-	case GDK_F11: term->next_keyval = GDK_F23; break;
-	case GDK_F12: term->next_keyval = GDK_F24; break;
-	}
+    case GDK_KP_Left:
+    case GDK_Left:	    term->next_keyval = K_LEFT; break;
+    case GDK_KP_Up:
+    case GDK_Up:	    term->next_keyval = K_UP; break;
+    case GDK_KP_Right:
+    case GDK_Right:	    term->next_keyval = K_RIGHT; break;
+    case GDK_KP_Down:
+    case GDK_Down:	    term->next_keyval = K_DOWN; break;
+
+    case GDK_Tab:
+      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_BACKTAB : 9;
+      break;
+    case GDK_ISO_Left_Tab:
+      term->next_keyval = K_BACKTAB;
+      break;
+
+    case GDK_KP_0: term->next_keyval = '0'; break;
+    case GDK_KP_1: term->next_keyval = '1'; break;
+    case GDK_KP_2: term->next_keyval = '2'; break;
+    case GDK_KP_3: term->next_keyval = '3'; break;
+    case GDK_KP_4: term->next_keyval = '4'; break;
+    case GDK_KP_5: term->next_keyval = '5'; break;
+    case GDK_KP_6: term->next_keyval = '6'; break;
+    case GDK_KP_7: term->next_keyval = '7'; break;
+    case GDK_KP_8: term->next_keyval = '8'; break;
+    case GDK_KP_9: term->next_keyval = '9'; break;
+
+    case GDK_KP_Add: term->next_keyval = K_FIELDPLUS; break;
+    case GDK_KP_Subtract: term->next_keyval = K_FIELDMINUS; break;
+
+    case GDK_KP_Enter:
+    case GDK_Return:
+      if (tn5250_config_get_bool (term->config, "bassackwards"))
+	term->next_keyval = K_ENTER;
+      else
+	term->next_keyval = K_FIELDEXIT;
+      break;
+
+    case GDK_KP_Home:
+    case GDK_Home:	    term->next_keyval = K_HOME; break;
+    case GDK_KP_Next:
+    case GDK_Next:	    term->next_keyval = K_ROLLUP; break;
+    case GDK_KP_Prior:
+    case GDK_Prior:	    term->next_keyval = K_ROLLDN; break;
+    case GDK_KP_End:
+    case GDK_End:	    term->next_keyval = K_END; break;
+
+    case GDK_F1: case GDK_KP_F1:
+      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_F13 : K_F1;
+      break;
+    case GDK_F2: case GDK_KP_F2:
+      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_F14 : K_F2;
+      break;
+    case GDK_F3: case GDK_KP_F3:
+      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_F15 : K_F3;
+      break;
+    case GDK_F4: case GDK_KP_F4:
+      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_F16 : K_F4;
+      break;
+    case GDK_F5:
+      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_F17 : K_F5;
+      break;
+    case GDK_F6:
+      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_F18 : K_F6;
+      break;
+    case GDK_F7:
+      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_F19 : K_F7;
+      break;
+    case GDK_F8:
+      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_F20 : K_F8;
+      break;
+    case GDK_F9:
+      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_F21 : K_F9;
+      break;
+    case GDK_F10:
+      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_F22 : K_F10;
+      break;
+    case GDK_F11:
+      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_F23 : K_F11;
+      break;
+    case GDK_F12:
+      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_F24 : K_F12;
+      break;
+
+    case GDK_Escape:
+      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_SYSREQ :
+	K_ATTENTION;
+      break;
+
+    case GDK_KP_Divide: term->next_keyval = '/'; break;
+    case GDK_KP_Multiply: term->next_keyval = '*'; break;
+
+    case GDK_Control_L:	    term->next_keyval = K_RESET; break;
+    case GDK_Control_R:
+      if (tn5250_config_get_bool (term->config, "bassackwards"))
+	term->next_keyval = K_FIELDEXIT;
+      else
+	term->next_keyval = K_ENTER;
+      break;
+    case GDK_BackSpace:	    term->next_keyval = K_BACKSPACE; break;
+    case GDK_Insert:	    term->next_keyval = K_INSERT; break;
+    case GDK_KP_Delete:
+    case GDK_Delete:	    term->next_keyval = K_DELETE; break;
+    case GDK_Pause:	    term->next_keyval = K_HELP; break;
+
+    /* Extra mappings that just happen to coincide */
+    case GDK_Sys_Req:
+    case GDK_Print:	    term->next_keyval = K_PRINT; break;
+    case GDK_Help:	    term->next_keyval = K_HELP; break;
+   
+    /* Map the 3270 codes ;) */
+    case GDK_3270_Duplicate:term->next_keyval = K_DUPLICATE; break;
+    case GDK_3270_BackTab:  term->next_keyval = K_BACKTAB; break;
+    case GDK_3270_Reset:    term->next_keyval = K_RESET; break;
+    case GDK_3270_Test:	    term->next_keyval = K_TESTREQ; break;
+    case GDK_3270_Attn:	    term->next_keyval = K_ATTENTION; break;
+    case GDK_3270_PrintScreen: term->next_keyval = K_PRINT; break;
+    case GDK_3270_Enter:    term->next_keyval = K_ENTER; break;
+
+    default:
+      if (term->next_keyval >= 127)
+	g_warning("unhandled key 0x%04X (%s)", term->next_keyval,
+	    gdk_keyval_name(term->next_keyval));
     }
 
   gtk_main_quit();
@@ -929,78 +1039,12 @@ static int gtkterm_getkey (Tn5250Terminal *tnThis)
 
   This = GTK5250_TERMINAL(tnThis->data);
 
+  if (This->next_keyval == 0)
+    return -1;
+
   keyval = This->next_keyval;
   This->next_keyval = 0;
-
-  /* You can look up the symbols below in /usr/include/gdk/gdkkeysyms.h */
-  switch (keyval)
-    {
-    case 0:		    return -1;	      /* Tell the key handling loop in
-						 session.c that we have no
-						 more keys. */
-
-    case GDK_Left:	    return K_LEFT;
-    case GDK_Up:	    return K_UP;
-    case GDK_Right:	    return K_RIGHT;
-    case GDK_Down:	    return K_DOWN;
-    case GDK_Tab:	    return 9;
-    case GDK_Return:	    return K_FIELDEXIT;
-    case GDK_Home:	    return K_HOME;
-    case GDK_Next:	    return K_ROLLUP;
-    case GDK_Prior:	    return K_ROLLDN;
-    case GDK_End:	    return K_END;
-    case GDK_F1:	    return K_F1;
-    case GDK_F2:	    return K_F2;
-    case GDK_F3:	    return K_F3;
-    case GDK_F4:	    return K_F4;
-    case GDK_F5:	    return K_F5;
-    case GDK_F6:	    return K_F6;
-    case GDK_F7:	    return K_F7;
-    case GDK_F8:	    return K_F8;
-    case GDK_F9:	    return K_F9;
-    case GDK_F10:	    return K_F10;
-    case GDK_F11:	    return K_F11;
-    case GDK_F12:	    return K_F12;
-    case GDK_F13:	    return K_F13;
-    case GDK_F14:	    return K_F14;
-    case GDK_F15:	    return K_F15;
-    case GDK_F16:	    return K_F16;
-    case GDK_F17:	    return K_F17;
-    case GDK_F18:	    return K_F18;
-    case GDK_F19:	    return K_F19;
-    case GDK_F20:	    return K_F20;
-    case GDK_F21:	    return K_F21;
-    case GDK_F22:	    return K_F22;
-    case GDK_F23:	    return K_F23;
-    case GDK_F24:	    return K_F24;
-    case GDK_Control_L:	    return K_RESET;
-    case GDK_Control_R:	    return K_ENTER;
-    case GDK_BackSpace:	    return K_BACKSPACE;
-    case GDK_Insert:	    return K_INSERT;
-    case GDK_Delete:	    return K_DELETE;
-    case GDK_Escape:	    return K_SYSREQ;
-    case GDK_Pause:	    return K_HELP;
-
-    /* Extra mappings that just happen to coincide */
-    case GDK_Print:	    return K_PRINT;
-    case GDK_Help:	    return K_HELP;
-   
-    /* Map the 3270 codes ;) */
-    case GDK_3270_Duplicate:return K_DUPLICATE;
-    case GDK_3270_BackTab:  return K_BACKTAB;
-    case GDK_3270_Reset:    return K_RESET;
-    case GDK_3270_Test:	    return K_TESTREQ;
-    case GDK_3270_Attn:	    return K_ATTENTION;
-    case GDK_3270_PrintScreen: return K_PRINT;
-    case GDK_3270_Enter:    return K_ENTER;
-
-    }
-
-  if(keyval < 127)	  /* Return valid ASCII codes */
-    return (int)keyval;
-
-  g_warning("unhandled key 0x%04X (%s)", keyval, gdk_keyval_name(keyval));
-  return -1;
+  return keyval;
 }
 
 static void gtk5250_terminal_update_from_config (Gtk5250Terminal *This)
