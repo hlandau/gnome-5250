@@ -156,22 +156,17 @@ GtkType gtk5250_terminal_get_type ()
   static GtkType terminal_type = 0;
   if (!terminal_type)
     {
-      static const GTypeInfo type_info =
+      TN5250_LOG(("gtk5250_terminal_get_type: entered.\n"));
+      static const GtkTypeInfo type_info =
       {
-        sizeof (Gtk5250TerminalClass),
-        NULL, /* base_init */
-        NULL, /* base_finalize */
-        (GClassInitFunc) gtk5250_terminal_class_init,
-        NULL, /* class_init */
-        NULL, /* class_finalize */
+        "Gtk5250Terminal",
         sizeof (Gtk5250Terminal),
-        0,    /* n_preallocs */
-        (GInstanceInitFunc) gtk5250_terminal_init,
+        sizeof (Gtk5250TerminalClass),
+        (GtkClassInitFunc) gtk5250_terminal_class_init,
+        (GtkObjectInitFunc) gtk5250_terminal_init,
+        NULL, NULL, NULL
       };
-      terminal_type = g_type_register_static (GTK_TYPE_WIDGET,
-                                              "Gtk5250Terminal",
-                                              &type_info,
-                                              0);
+      terminal_type = gtk_type_unique (GTK_TYPE_WIDGET, &type_info);
     }
   return terminal_type;
 }
@@ -187,6 +182,7 @@ static void gtk5250_terminal_class_init (Gtk5250TerminalClass *klass)
   widget_class = (GtkWidgetClass*) klass;
   object_class = (GtkObjectClass*) klass;
 
+      TN5250_LOG(("gtk5250_terminal_class_init: entered.\n"));
   parent_class = gtk_type_class (gtk_widget_get_type ());
 
   object_class->destroy = gtk5250_terminal_destroy;
@@ -213,6 +209,7 @@ static void gtk5250_terminal_init (Gtk5250Terminal *term)
 {
   gint n;
   GdkColor clr;
+      TN5250_LOG(("gtk5250_terminal_init: entered.\n"));
 
   /* FIXME: Do we have to load our fonts here? */
   term->font_80 = gdk_font_load (DEFAULT_FONT);
@@ -286,6 +283,7 @@ static void gtk5250_terminal_init (Gtk5250Terminal *term)
  */
 GtkWidget *gtk5250_terminal_new ()
 {
+      TN5250_LOG(("gtk5250_terminal_new: entered.\n"));
   Gtk5250Terminal *term;
   term = gtk_type_new (gtk5250_terminal_get_type ());
   return GTK_WIDGET (term);
@@ -313,6 +311,7 @@ static void gtk5250_terminal_realize (GtkWidget *widget)
   gint attributes_mask;
   gint n;
 
+      TN5250_LOG(("gtk5250_terminal_realize: entered.\n"));
   g_return_if_fail (widget != NULL);
   g_return_if_fail (GTK5250_IS_TERMINAL (widget));
 
@@ -381,8 +380,8 @@ static void gtk5250_terminal_realize (GtkWidget *widget)
   gdk_draw_rectangle(term->store, term->bg_gc, TRUE, 0, 0,
       widget->allocation.width+1, widget->allocation.height+1);
 
-  term->timeout_id = g_timeout_add (500,
-      (GSourceFunc)gtk5250_terminal_blink_timeout, term);
+/*   term->timeout_id = g_timeout_add (500,
+      (GSourceFunc)gtk5250_terminal_blink_timeout, term); */
 }
 
 /*
@@ -392,6 +391,7 @@ static void gtk5250_terminal_unrealize (GtkWidget *widget)
 {
   Gtk5250Terminal *term;
 
+      TN5250_LOG(("gtk5250_terminal_unrealize: entered.\n"));
   g_return_if_fail (widget != NULL);
   g_return_if_fail (GTK5250_IS_TERMINAL (widget));
 
@@ -431,6 +431,7 @@ static void gtk5250_terminal_size_request (GtkWidget *widget,
 {
   Gtk5250Terminal *term;
 
+      TN5250_LOG(("gtk5250_terminal_size_request: entered.\n"));
   g_return_if_fail (widget != NULL);
   g_return_if_fail (GTK5250_IS_TERMINAL (widget));
   g_return_if_fail (requisition != NULL);
@@ -459,6 +460,7 @@ static void gtk5250_terminal_size_allocate (GtkWidget *widget,
 {
   Gtk5250Terminal *term;
 
+      TN5250_LOG(("gtk5250_terminal_size_allocate: entered.\n"));
   g_return_if_fail (widget != NULL);
   g_return_if_fail (GTK5250_IS_TERMINAL (widget));
   g_return_if_fail (allocation != NULL);
@@ -495,6 +497,7 @@ static gint gtk5250_terminal_expose (GtkWidget *widget, GdkEventExpose *event)
   if (event->count > 0)
     return FALSE;
 
+  TN5250_LOG(("gtk5250_terminal_expose: entered.\n"));
   term = GTK5250_TERMINAL (widget); 
 
   if (term->w != 132)
@@ -615,7 +618,6 @@ static void gtk5250_terminal_draw_char (Gtk5250Terminal *term, gint y, gint x, g
   /* Draw the cursor (in blue) when it blinks */
   if(y == term->cy && x == term->cx && term->blink_state)
     {
-      TN5250_LOG(("BLINK: state = %d\n", term->blink_state ? 1 : 0));
       ch = ch ^ A_5250_REVERSE;
       if ((ch & A_5250_REVERSE) != 0)
 	color_idx = (A_5250_BLUE >> 8) - 1;
@@ -672,6 +674,7 @@ static void gtk5250_terminal_destroy (GtkObject *object)
 {
   Gtk5250Terminal *term;
 
+      TN5250_LOG(("gtk5250_terminal_destroy: entered.\n"));
   g_return_if_fail (object != NULL);
   g_return_if_fail (GTK5250_IS_TERMINAL (object));
 
@@ -715,6 +718,7 @@ static void gtk5250_terminal_map (GtkWidget *widget)
 {
   Gtk5250Terminal *term;
 
+      TN5250_LOG(("gtk5250_terminal_map: entered.\n"));
   g_return_if_fail (widget != NULL);
   g_return_if_fail (GTK5250_IS_TERMINAL (widget));
 
@@ -740,6 +744,7 @@ static void gtk5250_terminal_unmap (GtkWidget *widget)
 {
   Gtk5250Terminal *term;
 
+      TN5250_LOG(("gtk5250_terminal_unmap: entered.\n"));
   g_return_if_fail (widget != NULL);
   g_return_if_fail (GTK5250_IS_TERMINAL (widget));
 
@@ -1143,6 +1148,7 @@ static int gtkterm_waitevent (Tn5250Terminal *tnThis)
   Gtk5250Terminal *This;
   gint pending;
 
+      TN5250_LOG(("gtkterm_waitevent: entered.\n"));
   g_return_val_if_fail(tnThis != NULL,-1);
   g_return_val_if_fail(tnThis->data != NULL, -1);
   g_return_val_if_fail(GTK5250_IS_TERMINAL(tnThis->data), -1);
@@ -1312,6 +1318,7 @@ static gint
 gtk5250_terminal_button_press_event (GtkWidget *widget,
 				     GdkEventButton *event) {
     Gtk5250Terminal *term;
+      TN5250_LOG(("gtk5250_terminal_button_press_event: entered.\n"));
 
     g_return_val_if_fail (widget != NULL, FALSE);
     g_return_val_if_fail (GTK5250_IS_TERMINAL(widget), FALSE);
@@ -1351,6 +1358,7 @@ gtk5250_terminal_button_release_event (GtkWidget *widget,
     guchar c;
     gint bp, x, y;
 
+      TN5250_LOG(("gtk5250_terminal_button_release_event: entered.\n"));
     g_return_val_if_fail (widget != NULL, FALSE);
     g_return_val_if_fail (GTK5250_IS_TERMINAL(widget), FALSE);
     g_return_val_if_fail (event != NULL, FALSE);
