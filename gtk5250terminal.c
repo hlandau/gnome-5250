@@ -345,7 +345,7 @@ static void gtk5250_terminal_size_request (GtkWidget *widget,
   term = GTK5250_TERMINAL (widget);
 
   requisition->width = term->font_w * term->w + (2 * BORDER_WIDTH);
-  requisition->height = (term->font_h + 4) * (term->h + 1) +
+  requisition->height = (term->font_h + 4) * (term->h + 2) +
     (2 * BORDER_WIDTH);
 }
 
@@ -375,7 +375,7 @@ static gint gtk5250_terminal_expose (GtkWidget *widget, GdkEventExpose *event)
 {
   Gtk5250Terminal *term;
   GdkColor pen;
-  gint y, x, h;
+  gint y, x;
 
   g_return_val_if_fail (widget != NULL, FALSE);
   g_return_val_if_fail (GTK5250_IS_TERMINAL (widget), FALSE);
@@ -388,14 +388,12 @@ static gint gtk5250_terminal_expose (GtkWidget *widget, GdkEventExpose *event)
 
   gdk_window_clear (widget->window);
 
-  h = gdk_char_height (term->font, 'M'); 
-
   pen.pixel = term->colors[(A_5250_TURQ >> 8) - 1];
   gdk_gc_set_foreground (term->fg_gc, &pen);
   gdk_draw_line (term->store,
       term->fg_gc,
-      0, (h + 4) * term->h + 3, 
-      widget->allocation.width - (2 * BORDER_WIDTH), (h + 4) * term->h + 3 );
+      0, (term->font_h + 4) * term->h + 3, 
+      widget->allocation.width - (2 * BORDER_WIDTH), (term->font_h + 4) * term->h + 3 );
 
   for (y = 0; y < 27; y++)
     {
@@ -414,9 +412,10 @@ static gint gtk5250_terminal_expose (GtkWidget *widget, GdkEventExpose *event)
   if (GTK_WIDGET_DRAWABLE (widget))
     {
       gdk_draw_pixmap (term->client_window, term->fg_gc,
-	  term->store, 0, 0, 0, 0,
-	  term->font_w * 80,
-	  (term->font_h + 4) * 25);
+	  term->store,
+	  event->area.x, event->area.y, /* Source coordinates */
+	  event->area.x, event->area.y, /* Dest coordinates */
+	  event->area.width, event->area.height);
     }
 
   return FALSE;
@@ -486,8 +485,8 @@ static void gtk5250_terminal_draw_char (Gtk5250Terminal *term, gint y, gint x, g
   if ((ch & A_5250_VERTICAL) != 0)
     {
       gdk_draw_line (term->store, fg,
-	  x * term->font_w, y * (term->font_h + 4) + 3,
-	  x * term->font_w, (y + 1) * (term->font_h + 4) + 2);
+	  x * term->font_w, y * (term->font_h + 4) + 4,
+	  x * term->font_w, (y + 1) * (term->font_h + 4) + 3);
     }
 }
 
@@ -639,6 +638,7 @@ static int gtkterm_flags (Tn5250Terminal *This)
 
 static void gtkterm_beep (Tn5250Terminal *This)
 {
+  g_print ("beep!\n");
   gdk_beep();
 }
 
@@ -648,6 +648,8 @@ static void gtkterm_update (Tn5250Terminal *tnThis, Tn5250Display *dsp)
   gint y, x;
   guchar a = 0x20, c;
   guint attrs;
+  gboolean have_char = FALSE;
+  GdkRectangle area;
 
   g_return_if_fail(tnThis != NULL);
   g_return_if_fail(tnThis->data != NULL);
@@ -666,8 +668,9 @@ static void gtkterm_update (Tn5250Terminal *tnThis, Tn5250Display *dsp)
 	  if ((c & 0xe0) == 0x20)
 	    {
 	      a = (c & 0xff);
-	      if (This->cells[y][x] != (((guchar)' ') | attrs))
-		This->cells[y][x] = ' ' | attrs | A_5250_DIRTYFLAG;
+	      /* Display actual attribute characters as if they had an attribute 0x20 */
+	      if (This->cells[y][x] != (((guchar)' ') | attribute_map[0]))
+		This->cells[y][x] = ' ' | attribute_map[0] | A_5250_DIRTYFLAG;
 	    }
 	  else
 	    {
@@ -703,7 +706,11 @@ static void gtkterm_update (Tn5250Terminal *tnThis, Tn5250Display *dsp)
     }
 
   This->blink_state = 1;
-  gtk_widget_queue_draw ((GtkWidget*) This);
+  /* Don't draw entire area if we can avoid it. */
+  area.x = area.y = 0;
+  area.width = This->font_w * This->w;
+  area.height = (This->font_h + 4) * This->h + 4;
+  gtk_widget_draw ((GtkWidget*) This, &area);
 }
 
 static void gtkterm_update_indicators (Tn5250Terminal *This, Tn5250Display *dsp)

@@ -1,3 +1,8 @@
+Fri Dec 17, 1999  Jay 'Eraserhead' Felice <jasonf@nacs.net>
+	* Added support for compiling with GTK+ but without Gnome.
+	* Added BUGS file, gtk-5250.c
+	* More robust autoconf support.
+
 Wed Dec  1, 1999  Jay 'Eraserhead' Felice <jasonf@nacs.net>
 	* Updated to compile with tn5250-0.15.3+ (API change from passing
 	  display buffer to terminals to passing display to terminals).

@@ -1,0 +1,14 @@
+gnome-5250 BUGS
+------------------------------------------------------------------------------
+
+* Funky characters in upper-left part of terminal when we type.  This may now
+  be hidden by our update process.
+* It seems too unresponsive to me, I should profile the darn thing and see why
+  it takes so long to update.  I fear that drawing to the backing store is
+  the main reason.
+* Under AfterStep, the cursor should turn from solid to an outline and stop
+  blinking when the window doesn't have the keyboard focus.  There is no other
+  indication.
+* Terminal beeps too often.  This is probably a problem with lib5250 we should
+  track down.
+* No display indicators.

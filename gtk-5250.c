@@ -16,7 +16,7 @@
  * the Free Software Foundation, Inc., 59 Temple Place, Suite 330,
  * Boston, MA 02111-1307 USA */
 
-#include <gnome.h>
+#include <gtk/gtk.h>
 #include "gtk5250terminal.h"
 
 static void file_connect_callback (void);
@@ -24,29 +24,6 @@ static void file_disconnect_callback (void);
 static void file_preferences_callback (void);
 static void file_exit_callback (void);
 static void help_about_callback (void);
-
-static GnomeUIInfo file_menu[] = {
-   GNOMEUIINFO_ITEM_STOCK ( _("_Connect..."), _("Connect to the remote system."),
-	 file_connect_callback, GNOME_STOCK_PIXMAP_REFRESH),
-   GNOMEUIINFO_ITEM_STOCK ( _("_Disconnect"), _("Disconnect from the remote sysstem."),
-	 file_disconnect_callback, GNOME_STOCK_PIXMAP_STOP),
-   GNOMEUIINFO_SEPARATOR,
-   GNOMEUIINFO_MENU_PREFERENCES_ITEM (file_preferences_callback, NULL),
-   GNOMEUIINFO_SEPARATOR,
-   GNOMEUIINFO_MENU_EXIT_ITEM (file_exit_callback, NULL),
-   GNOMEUIINFO_END
-};
-
-static GnomeUIInfo help_menu[] = {
-   GNOMEUIINFO_MENU_ABOUT_ITEM (help_about_callback, NULL),
-   GNOMEUIINFO_END
-};
-
-static GnomeUIInfo main_menu[] = {
-   GNOMEUIINFO_MENU_FILE_TREE (file_menu),
-   GNOMEUIINFO_MENU_HELP_TREE (help_menu),
-   GNOMEUIINFO_END
-};
 
 Tn5250Session *tnsess;
 Tn5250Terminal *tnterm;
@@ -64,18 +41,16 @@ int main (int argc, char *argv[])
    /* This is _really_ ugly, but I'm working on other things right now ... */
    if(argc != 2)
       {
-	 fprintf (stderr,"Ack! THPTHT!  Usage: gnome-5250 [telnet:]remotehost[:port]\n");
+	 fprintf (stderr,"Ack! THPTHT!  Usage: gtk-5250 [telnet:]remotehost[:port]\n");
 	 return 255;
       }
    remotehost = argv[1];
 
-   gnome_init ("gnome-5250", VERSION, argc, argv);
+   gtk_init (&argc, &argv);
 
-   app = gnome_app_new ("gnome-5250", N_("Gnome 5250 Emulator"));
-   gnome_app_create_menus (GNOME_APP (app), main_menu);
-
+   app = gtk_window_new (GTK_WINDOW_TOPLEVEL);
    term = gtk5250_terminal_new ();
-   gnome_app_set_contents (GNOME_APP (app), term);
+   gtk_container_add(GTK_CONTAINER (app), term);
    gtk_widget_show (term);
 
    gtk_signal_connect (GTK_OBJECT (app), "delete_event",
@@ -151,13 +126,14 @@ static void help_about_callback ()
       NULL
    };
 
+   /* FIXME:
    dlg = gnome_about_new ( _("Gnome 5250 Emulator"), VERSION,
 	 _("Copyright (C) 1999 Michael Madore"),
 	 authors,
 	 _("A GNU General Public License 5250 Emulator for Gnome systems."),
 	 PKGDATADIR "/tn5250-logo.xpm");
 
-   gtk_widget_show (dlg);
+   gtk_widget_show (dlg); */
 }
 
 /* vi:set sts=3 sw=3: */
