@@ -106,7 +106,7 @@ static Gtk5250_color_map colorlist[] =
   { "blue",        "rgb:00/80/ff" },
   { "black",       "rgb:00/00/00" },
   { "green",       "rgb:00/ff/00" },
-  { "ruler_color", "rgb:ff/ff/ff" },
+  { "ruler_color", "rgb:c0/00/00" },
   { NULL, NULL }
 };
 
@@ -510,12 +510,10 @@ static gint gtk5250_terminal_expose (GtkWidget *widget, GdkEventExpose *event)
   /* erase previous ruler */
 
   if (term->ruler && term->rx!=-1 && term->ry!=-1) {
-       pen.pixel = term->colors[(A_5250_BLACK >> 8) - 1];
-       gdk_gc_set_foreground (term->fg_gc, &pen);
-       gdk_draw_line (term->store, term->fg_gc,
-            0, term->ry, widget->allocation.width - (2*BORDER_WIDTH), term->ry);
-       gdk_draw_line (term->store, term->fg_gc,
-            term->rx, 0, term->rx, term->h * (font_h+4) + 3);
+       for (x=0; x<term->w; x++) 
+	      term->cells[term->ry][x] |= (guint)A_5250_DIRTYFLAG;
+       for (y=0; y<term->h; y++) 
+	      term->cells[y][term->rx] |= (guint)A_5250_DIRTYFLAG;
   }
 
   pen.pixel = term->colors[(A_5250_TURQ >> 8) - 1];
@@ -543,17 +541,16 @@ static gint gtk5250_terminal_expose (GtkWidget *widget, GdkEventExpose *event)
   /* draw new ruler */
 
   if (term->ruler) {
-       gint rx,ry;
-       rx = term->cx * font_w;
-       ry = (term->cy * (font_h + 4)) + 4;
+       term->rx = term->cx;
+       term->ry = term->cy;
+       x = term->cx * font_w;
+       y = (term->cy * (font_h + 4)) + 4;
        pen.pixel = term->colors[(A_5250_RULER_COLOR >> 8) - 1];
        gdk_gc_set_foreground (term->fg_gc, &pen);
        gdk_draw_line (term->store, term->fg_gc,
-            0, ry, widget->allocation.width - (2*BORDER_WIDTH), ry);
+            0, y, widget->allocation.width - (2*BORDER_WIDTH), y);
        gdk_draw_line (term->store, term->fg_gc,
-            rx, 0, rx, term->h * (font_h+4) + 3);
-       term->rx = rx;
-       term->ry = ry;
+            x, 4, x, term->h * (font_h+4) + 3);
   }
        
 
@@ -775,11 +772,15 @@ static gboolean gtk5250_terminal_key_press_event (GtkWidget *widget, GdkEventKey
   switch (term->next_keyval)
     {
     case GDK_KP_Left:
-    case GDK_Left:	    term->next_keyval = K_LEFT; break;
+    case GDK_Left:	
+      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_PREVWORD : K_LEFT;
+      break;
     case GDK_KP_Up:
     case GDK_Up:	    term->next_keyval = K_UP; break;
     case GDK_KP_Right:
-    case GDK_Right:	    term->next_keyval = K_RIGHT; break;
+    case GDK_Right:	  
+      term->next_keyval= (event->state & GDK_SHIFT_MASK) ? K_NEXTWORD : K_RIGHT;
+      break;
     case GDK_KP_Down:
     case GDK_Down:	    term->next_keyval = K_DOWN; break;
 
@@ -813,7 +814,9 @@ static gboolean gtk5250_terminal_key_press_event (GtkWidget *widget, GdkEventKey
       break;
 
     case GDK_KP_Home:
-    case GDK_Home:	    term->next_keyval = K_HOME; break;
+    case GDK_Home:	 
+      term->next_keyval= (event->state & GDK_SHIFT_MASK) ? K_FIELDHOME : K_HOME;
+      break;
     case GDK_KP_Next:
     case GDK_Next:	    term->next_keyval = K_ROLLUP; break;
     case GDK_KP_Prior:
@@ -1222,6 +1225,9 @@ static void gtk5250_terminal_update_from_config (Gtk5250Terminal *This)
   This->font_132_w = gdk_char_width (This->font_132, 'M') + 1;
   This->font_132_h = gdk_char_height (This->font_132, 'M');
 
+  if (tn5250_config_get (This->config, "ruler")) 
+      This->ruler = tn5250_config_get_bool (This->config, "ruler");
+
   if (tn5250_config_get_bool(This->config, "black_on_white")) {
       gdk_color_parse("rgb:00/00/00", &clr);
       for (n=0; n<(A_5250_GREEN >> 8); n++) {
@@ -1629,4 +1635,3 @@ gtk5250_terminal_queuekey(Gtk5250Terminal *term, gint key) {
            term->k_buf_len ++;
      }
 }
-         

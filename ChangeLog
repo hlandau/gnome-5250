@@ -1,3 +1,9 @@
+Wed Feb 05, 2003 Scott Klement <klemscot@klements.com>
+	* Added key bindings for shift+left, shift+right and shift+home
+	  to match the support in cursesterm.
+	* Added support for the +/-ruler keyword allowed in cursesterm
+	  and/or win32 terminal.
+
 Tue Feb 04, 2003 Scott Klement <klemscot@klements.com>
 	* Added color keyword support (to match Windows & Curses terminals)
 	* Added mouse selections & copy/paste support
