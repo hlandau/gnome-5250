@@ -1,3 +1,8 @@
+Tue May 16, 2000 Jay 'Eraserhead' Felice <jfelice@cronosys.com>
+	* Fixed some Gtk5250Terminal resizing bugs, it's now possible to use
+	  132 column mode (although it doesn resize smaller again when you
+	  go back to 80 column mode yet, hmm...)
+
 Fri May 05, 2000 Jay 'Eraserhead' Felice <jfelice@cronosys.com>
 	* Fixed up so it works with current version in CVS (0.15.8+)
 	* Fixed bug where it was drawing a space in the last attribute

@@ -357,9 +357,13 @@ static void gtk5250_terminal_size_request (GtkWidget *widget,
 static void gtk5250_terminal_size_allocate (GtkWidget *widget,
     GtkAllocation *allocation)
 {
+  Gtk5250Terminal *term;
+
   g_return_if_fail (widget != NULL);
   g_return_if_fail (GTK5250_IS_TERMINAL (widget));
   g_return_if_fail (allocation != NULL);
+
+  term = GTK5250_TERMINAL (widget);
 
   widget->allocation = *allocation;
   if (GTK_WIDGET_REALIZED (widget))
@@ -367,6 +371,10 @@ static void gtk5250_terminal_size_allocate (GtkWidget *widget,
       gdk_window_move_resize (widget->window,
 	  allocation->x, allocation->y,
 	  allocation->width, allocation->height);
+      gdk_window_move_resize (term->client_window,
+	  BORDER_WIDTH, BORDER_WIDTH,
+	  allocation->width - BORDER_WIDTH *2,
+	  allocation->height - BORDER_WIDTH *2);
     }
 } 
 
@@ -669,6 +677,7 @@ static void gtkterm_update (Tn5250Terminal *tnThis, Tn5250Display *dsp)
   guchar a = 0x20, c;
   guint attrs;
   gboolean have_char = FALSE;
+  gboolean display_resized = FALSE;
   GdkRectangle area;
 
   g_return_if_fail(tnThis != NULL);
@@ -677,8 +686,26 @@ static void gtkterm_update (Tn5250Terminal *tnThis, Tn5250Display *dsp)
   g_return_if_fail(dsp != NULL);
 
   This = GTK5250_TERMINAL(tnThis->data);
+  if (This->w != tn5250_display_width (dsp)
+      || This->h != tn5250_display_height (dsp))
+    display_resized = TRUE;
   This->w = tn5250_display_width(dsp);
   This->h = tn5250_display_height(dsp);
+
+  if (display_resized)
+    {
+      for (y = 0; y < 28; y++)
+	for (x = 0; x < 132; x++)
+	  This->cells[y][x] = ' ' | A_5250_DIRTYFLAG;
+      if (This->store)
+	gdk_pixmap_unref (This->store);
+      This->store = gdk_pixmap_new (This->client_window,
+	  This->font_w * This->w, (This->font_h + 4) * (This->h + 1) + 10,
+	  -1);
+      gtk_widget_set_usize ((GtkWidget*) This,
+	  This->font_w * This->w + BORDER_WIDTH*2,
+	  (This->font_h + 4) * (This->h + 1) + 10 + BORDER_WIDTH*2);
+    }
 
   for(y = 0; y < This->h; y++)
     {
@@ -726,18 +753,13 @@ static void gtkterm_update (Tn5250Terminal *tnThis, Tn5250Display *dsp)
       This->cy = tn5250_display_cursor_y (dsp);
       This->cx = tn5250_display_cursor_x (dsp);
       This->cells[This->cy][This->cx] |= A_5250_DIRTYFLAG;
+    }
 
-      gtkterm_update_indicators (tnThis, dsp);
-    }
-  else
-    {
-      This->blink_state = 1;
-      /* Don't draw entire area if we can avoid it. */
-      area.x = area.y = 0;
-      area.width = This->font_w * This->w;
-      area.height = (This->font_h + 4) * This->h + 4;
-      gtk_widget_draw ((GtkWidget*) This, &area);
-    }
+  This->blink_state = 1;
+  gtkterm_update_indicators (tnThis, dsp);
+
+  if (display_resized)
+    gtk_widget_queue_resize (gtk_widget_get_toplevel ((GtkWidget*) This));
 }
 
 static void gtkterm_update_indicators (Tn5250Terminal *This, Tn5250Display *dsp)
@@ -768,7 +790,7 @@ static void gtkterm_update_indicators (Tn5250Terminal *This, Tn5250Display *dsp)
       tn5250_display_cursor_y(dsp)+1);
    *strchr(term->ind_buf, 0) = ' ';
 
-   gtk_widget_queue_draw ((GtkWidget*) term);
+   gtk_widget_draw ((GtkWidget*) term, NULL);
 }
 
 static int gtkterm_waitevent (Tn5250Terminal *tnThis)

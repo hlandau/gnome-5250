@@ -64,7 +64,7 @@ struct _Gtk5250Terminal
   gint		    blink_state : 1;	/* Is blink currently on? */
 
   gint		    cx, cy, w, h;       /* Cursor position/display size. */
-  guint		    cells[27][132];	/* Data currently on display. */
+  guint		    cells[28][132];	/* Data currently on display. */
   gchar		    ind_buf[80];	/* Indicator buffer. */
 };
 
