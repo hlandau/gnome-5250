@@ -1,3 +1,6 @@
+Sun Mar 07, 2004 Scott Klement <klemscot@klements.com>
+	* Remove warning messages for modifier keys (Shift, Ctrl, Alt, Meta)
+
 Sat Mar 06, 2004 Scott Klement <klemscot@klements.com>
 	* Upgraded to use GTK+-2.0, Glib-2.0, etc
 	* Note that at the moment, gnome-5250 is not being built, IMHO,

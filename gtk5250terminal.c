@@ -915,7 +915,15 @@ static gboolean gtk5250_terminal_key_press_event (GtkWidget *widget, GdkEventKey
       break; 
 
     default:
-      if (term->next_keyval >= 127)
+      if (term->next_keyval >= 127 
+            && term->next_keyval != GDK_Shift_L 
+            && term->next_keyval != GDK_Shift_R
+            && term->next_keyval != GDK_Control_L
+            && term->next_keyval != GDK_Control_R
+            && term->next_keyval != GDK_Meta_L
+            && term->next_keyval != GDK_Meta_R
+            && term->next_keyval != GDK_Alt_L
+            && term->next_keyval != GDK_Alt_R     ) 
 	g_warning("unhandled key 0x%04X (%s)", term->next_keyval,
 	    gdk_keyval_name(term->next_keyval));
     }
