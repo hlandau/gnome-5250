@@ -2,6 +2,7 @@ Tue May 16, 2000 Jay 'Eraserhead' Felice <jfelice@cronosys.com>
 	* Fixed some Gtk5250Terminal resizing bugs, it's now possible to use
 	  132 column mode (although it doesn resize smaller again when you
 	  go back to 80 column mode yet, hmm...)
+	* Fixed autogen.sh so that it doesn't try to run autoheader.
 
 Fri May 05, 2000 Jay 'Eraserhead' Felice <jfelice@cronosys.com>
 	* Fixed up so it works with current version in CVS (0.15.8+)
