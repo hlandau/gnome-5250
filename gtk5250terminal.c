@@ -760,6 +760,7 @@ static void gtk5250_terminal_unmap (GtkWidget *widget)
 static gboolean gtk5250_terminal_key_press_event (GtkWidget *widget, GdkEventKey *event)
 {
   Gtk5250Terminal *term;
+  guint modifiers;
 
   g_return_val_if_fail(widget != NULL, FALSE);
   g_return_val_if_fail(GTK5250_IS_TERMINAL(widget), FALSE);
@@ -769,6 +770,7 @@ static gboolean gtk5250_terminal_key_press_event (GtkWidget *widget, GdkEventKey
   if (GTK_WIDGET_CLASS (parent_class)->key_press_event)
     (* GTK_WIDGET_CLASS (parent_class)->key_press_event) (widget,event);
 
+  modifiers = gtk_accelerator_get_default_mod_mask();
   term->pending |= TN5250_TERMINAL_EVENT_KEY; 
   term->next_keyval = event->keyval;
 
@@ -830,45 +832,44 @@ static gboolean gtk5250_terminal_key_press_event (GtkWidget *widget, GdkEventKey
     case GDK_End:	    term->next_keyval = K_END; break;
 
     case GDK_F1: case GDK_KP_F1:
-      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_F13 : K_F1;
+      term->next_keyval = ((event->state & modifiers) == GDK_SHIFT_MASK) ? K_F13 : K_F1;
       break;
     case GDK_F2: case GDK_KP_F2:
-      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_F14 : K_F2;
+      term->next_keyval = ((event->state & modifiers) == GDK_SHIFT_MASK) ? K_F14 : K_F2;
       break;
     case GDK_F3: case GDK_KP_F3:
-      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_F15 : K_F3;
+      term->next_keyval = ((event->state & modifiers) == GDK_SHIFT_MASK) ? K_F15 : K_F3;
       break;
     case GDK_F4: case GDK_KP_F4:
-      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_F16 : K_F4;
+      term->next_keyval = ((event->state & modifiers) == GDK_SHIFT_MASK) ? K_F16 : K_F4;
       break;
     case GDK_F5:
-      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_F17 : K_F5;
+      term->next_keyval = ((event->state & modifiers) == GDK_SHIFT_MASK) ? K_F17 : K_F5;
       break;
     case GDK_F6:
-      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_F18 : K_F6;
+      term->next_keyval = ((event->state & modifiers) == GDK_SHIFT_MASK) ? K_F18 : K_F6;
       break;
     case GDK_F7:
-      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_F19 : K_F7;
+      term->next_keyval = ((event->state & modifiers) == GDK_SHIFT_MASK) ? K_F19 : K_F7;
       break;
     case GDK_F8:
-      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_F20 : K_F8;
+      term->next_keyval = ((event->state & modifiers) == GDK_SHIFT_MASK) ? K_F20 : K_F8;
       break;
     case GDK_F9:
-      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_F21 : K_F9;
+      term->next_keyval = ((event->state & modifiers) == GDK_SHIFT_MASK) ? K_F21 : K_F9;
       break;
     case GDK_F10:
-      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_F22 : K_F10;
+      term->next_keyval = ((event->state & modifiers) == GDK_SHIFT_MASK) ? K_F22 : K_F10;
       break;
     case GDK_F11:
-      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_F23 : K_F11;
+      term->next_keyval = ((event->state & modifiers) == GDK_SHIFT_MASK) ? K_F23 : K_F11;
       break;
     case GDK_F12:
-      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_F24 : K_F12;
+      term->next_keyval = ((event->state & modifiers) == GDK_SHIFT_MASK) ? K_F24 : K_F12;
       break;
 
     case GDK_Escape:
-      term->next_keyval = (event->state & GDK_SHIFT_MASK) ? K_SYSREQ :
-	K_ATTENTION;
+      term->next_keyval = ((event->state & modifiers) == GDK_SHIFT_MASK) ? K_SYSREQ : K_ATTENTION;
       break;
 
     case GDK_KP_Divide: term->next_keyval = '/'; break;
@@ -904,12 +905,13 @@ static gboolean gtk5250_terminal_key_press_event (GtkWidget *widget, GdkEventKey
 
     case 'Q':
     case 'q': 
-      if (event->state & GDK_CONTROL_MASK) gtk_exit(0);
+      if ((event->state & modifiers) == GDK_CONTROL_MASK) gtk_exit(0);
       break; 
 
    case 't':
    case 'T':
-      if (event->state & GDK_CONTROL_MASK) term->next_keyval = K_TESTREQ;
+      if ((event->state & modifiers) == GDK_CONTROL_MASK) 
+           term->next_keyval = K_TESTREQ;
       break; 
 
     default:
