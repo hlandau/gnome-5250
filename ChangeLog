@@ -1,3 +1,6 @@
+Mon Aug 25, 2003 Scott Klement <klemscot@klements.com>
+	* Added mapping of Ctrl-T to the 5250 K_TESTREQ function 
+
 Thu Feb 13, 2003 Scott Klement <klemscot@klements.com>
 	* Change cursor blinking to use g_timeout_add instead of the
 	  (deprecated) gtk_timeout_add.

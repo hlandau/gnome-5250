@@ -904,6 +904,11 @@ static gboolean gtk5250_terminal_key_press_event (GtkWidget *widget, GdkEventKey
       if (event->state & GDK_CONTROL_MASK) gtk_exit(0);
       break; 
 
+   case 't':
+   case 'T':
+      if (event->state & GDK_CONTROL_MASK) term->next_keyval = K_TESTREQ;
+      break; 
+
     default:
       if (term->next_keyval >= 127)
 	g_warning("unhandled key 0x%04X (%s)", term->next_keyval,
