@@ -1,0 +1,7 @@
+Sat Nov 20, 1999  Jay 'Eraserhead' Felice <jasonf@nacs.net>
+	* autoconf'd and automade
+	* Better caching to bitmap (don't draw characters that haven't changed
+	  since last draw).
+	* Don't use a copied DBuffer as a cache, which saves lots of copies,
+	  mallocs, frees, etc.
+	* Implemented 'beep' terminal method.

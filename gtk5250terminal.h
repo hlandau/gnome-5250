@@ -1,6 +1,24 @@
 #ifndef __GTK5250_TERMINAL_H__
 #define __GTK5250_TERMINAL_H__
 
+/* GNOME 5250
+ * Copyright (C) 1999 Jason M. Felice
+ * 
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2, or (at your option)
+ * any later version.
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with this software; see the file COPYING.  If not, write to
+ * the Free Software Foundation, Inc., 59 Temple Place, Suite 330,
+ * Boston, MA 02111-1307 USA */
+
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
@@ -23,12 +41,10 @@ struct _Gtk5250Terminal
 {
   GtkWidget	    widget;
 
-  Tn5250Terminal    tn5250_impl;	/* Our implementation of the 5250 object */
-  gint		    conn_tag;		/* Tag from gtk_input_add_full() */
-  gint		    pending;		/* Pending events for gtkterm_waitevent to return */
+  Tn5250Terminal    tn5250_impl;  /* Our implementation of the 5250 object */
+  gint		    conn_tag;	  /* Tag from gtk_input_add_full() */
+  gint		    pending;	  /* Pending events for waitevent to return */
   guint		    next_keyval;
-
-  Tn5250Display*    char_buffer;	/* A display used as a character buffer. */
 
   GdkFont*	    font;
   gint		    font_w, font_h;
@@ -46,6 +62,9 @@ struct _Gtk5250Terminal
   guint		    blink_timeout;
 
   gint		    blink_state : 1;	/* Is blink currently on? */
+
+  gint		    cx, cy, w, h;       /* Cursor position/display size. */
+  guint		    cells[27][132];	/* Data currently on display. */
 };
 
 struct _Gtk5250TerminalClass

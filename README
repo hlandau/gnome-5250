@@ -1,0 +1,22 @@
+gnome-5250 README
+------------------------------------------------------------------------------
+
+This is Gnome 5250, a front end for the Linux 5250 project's emulator.  The
+Linux 5250 emulator package must be installed before this package can be
+built.  The homepage for the Linux 5250 project's emulator is
+http://www.blarg.net/~mmadore/.  Gnome development packages must also be
+installed.
+
+You should be able to install this package just by doing the following:
+
+./configure && make && su -c "make install"
+
+If this fails, please drop me a bug report.
+
+Support within this package for a pure GTK+ port which doesn't require Gnome
+is in the works.  This should be useful to build on Windows with Tor
+Lillqvist's Windows port of GTK+.
+
+Enjoy,
+-Jay 'Eraserhead' Felice
+(jasonf@nacs.net)

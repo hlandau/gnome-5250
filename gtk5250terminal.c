@@ -1,3 +1,20 @@
+/* GNOME 5250
+ * Copyright (C) 1999 Jason M. Felice
+ * 
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2, or (at your option)
+ * any later version.
+ * 
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ * 
+ * You should have received a copy of the GNU General Public License
+ * along with this software; see the file COPYING.  If not, write to
+ * the Free Software Foundation, Inc., 59 Temple Place, Suite 330,
+ * Boston, MA 02111-1307 USA */
 
 #include <gtk/gtk.h>
 #include <gdk/gdkkeysyms.h>
@@ -21,6 +38,10 @@
 #define A_5250_UNDERLINE	0x2000
 #define A_5250_BLINK		0x4000
 #define A_5250_VERTICAL		0x8000
+
+/* Pseudo-attribute we use to determine whether we have to draw this cell
+ * or not. */
+#define A_5250_DIRTYFLAG        0x10000
 
 static void gtk5250_terminal_class_init (Gtk5250TerminalClass *klass);
 static void gtk5250_terminal_init (Gtk5250Terminal *term);
@@ -46,10 +67,11 @@ static void gtkterm_destroy (Tn5250Terminal *This);
 static int gtkterm_width (Tn5250Terminal *This);
 static int gtkterm_height (Tn5250Terminal *This);
 static int gtkterm_flags (Tn5250Terminal *This);
-static void gtkterm_update (Tn5250Terminal *This, Tn5250Display *dsp);
-static void gtkterm_update_indicators (Tn5250Terminal *This, Tn5250Display *dsp);
+static void gtkterm_update (Tn5250Terminal *This, Tn5250DBuffer *dsp);
+static void gtkterm_update_indicators (Tn5250Terminal *This, Tn5250DBuffer *dsp);
 static int gtkterm_waitevent (Tn5250Terminal *This);
 static int gtkterm_getkey (Tn5250Terminal *This);
+static void gtkterm_beep (Tn5250Terminal *This);
 
 static GtkWidgetClass *parent_class = NULL;
 
@@ -160,6 +182,9 @@ static void gtk5250_terminal_init (Gtk5250Terminal *term)
   term->color_ctx = NULL;
   term->blink_timeout = 0;
   term->blink_state = 1;
+  term->cx = term->cy = 0;
+  term->w = 80;
+  term->h = 24;
 
   for (n = 0; n < 8; n++) {
     term->red[n] = default_red[n];
@@ -167,10 +192,11 @@ static void gtk5250_terminal_init (Gtk5250Terminal *term)
     term->blue[n] = default_blue[n];
   }
 
+  memset (term->cells, 0, sizeof (term->cells));
+
   term->conn_tag = 0;
   term->pending = 0;
   term->next_keyval = 0;
-  term->char_buffer = NULL;
 
   term->tn5250_impl.init = gtkterm_init;
   term->tn5250_impl.term = gtkterm_term;
@@ -182,6 +208,7 @@ static void gtk5250_terminal_init (Gtk5250Terminal *term)
   term->tn5250_impl.update_indicators = gtkterm_update_indicators;
   term->tn5250_impl.waitevent = gtkterm_waitevent;
   term->tn5250_impl.getkey = gtkterm_getkey;
+  term->tn5250_impl.beep = gtkterm_beep;
 
   term->tn5250_impl.conn_fd = -1;
   term->tn5250_impl.data = (void*)term;
@@ -205,7 +232,7 @@ Tn5250Terminal *gtk5250_terminal_get_impl (Gtk5250Terminal *This)
   g_return_val_if_fail(This != NULL,NULL);
   g_return_val_if_fail(GTK5250_IS_TERMINAL(This),NULL);
 
-  return &(This->tn5250_impl);
+  return &This->tn5250_impl;
 }
 
 /*
@@ -317,9 +344,9 @@ static void gtk5250_terminal_size_request (GtkWidget *widget,
 
   term = GTK5250_TERMINAL (widget);
 
-  /* FIXME: Take into account whether we are 80x24 or 132x27 */
-  requisition->width = term->font_w * 80 + (2 * BORDER_WIDTH);
-  requisition->height = (term->font_h + 4) * 25 + (2 * BORDER_WIDTH);
+  requisition->width = term->font_w * term->w + (2 * BORDER_WIDTH);
+  requisition->height = (term->font_h + 4) * (term->h + 1) +
+    (2 * BORDER_WIDTH);
 }
 
 /*
@@ -349,8 +376,6 @@ static gint gtk5250_terminal_expose (GtkWidget *widget, GdkEventExpose *event)
   Gtk5250Terminal *term;
   GdkColor pen;
   gint y, x, h;
-  guchar a = 0x20, c;
-  gint attrs;
 
   g_return_val_if_fail (widget != NULL, FALSE);
   g_return_val_if_fail (GTK5250_IS_TERMINAL (widget), FALSE);
@@ -365,56 +390,26 @@ static gint gtk5250_terminal_expose (GtkWidget *widget, GdkEventExpose *event)
 
   h = gdk_char_height (term->font, 'M'); 
 
-  /* FIXME: This has to take into account the current height. */
   pen.pixel = term->colors[(A_5250_TURQ >> 8) - 1];
   gdk_gc_set_foreground (term->fg_gc, &pen);
   gdk_draw_line (term->store,
-      term->fg_gc, 0, (h + 4) * 24, 
-      widget->allocation.width - (2 * BORDER_WIDTH), (h + 4) * 24);
+      term->fg_gc,
+      0, (h + 4) * term->h + 3, 
+      widget->allocation.width - (2 * BORDER_WIDTH), (h + 4) * term->h + 3 );
 
-  for(y = 0; y < 27; y++)
+  for (y = 0; y < 27; y++)
     {
-      if(y >= tn5250_display_height(term->char_buffer))
-	break;
-      for(x = 0; x < 132; x++)
+      for (x = 0; x < 132; x++)
 	{
-	  if(x >= tn5250_display_width(term->char_buffer))
-	    break;
-
-	  c = tn5250_display_char_at(term->char_buffer, y, x);
-	  if ((c & 0xe0) == 0x20)
+	  if (((term->cells[y][x] & A_5250_DIRTYFLAG) != 0) ||
+	    ((term->cells[y][x] & A_5250_BLINK) != 0) ||
+	    (term->cy == y && term->cx == x))
 	    {
-	      a = (c & 0xff);
-	      gtk5250_terminal_draw_char (term, y, x, ' ' | attribute_map[0]);
-	    }
-	  else
-	    {
-	      attrs = attribute_map[a - 0x20];
-	      if(attrs == 0) /* NONDISPLAY */
-		gtk5250_terminal_draw_char (term, y, x, ' ' | attribute_map[0]);
-	      else
-		{
-		  if ((c < 0x40 && c > 0x00) || c == 0xff) /* UNPRINTABLE */
-		    {
-		      c = ' ';
-		      attrs ^= A_5250_REVERSE;
-		    }
-		  else
-		    c = tn5250_ebcdic2ascii(c);
-		  gtk5250_terminal_draw_char (term, y, x, c | attrs);
-		}
+	      gtk5250_terminal_draw_char (term, y, x, term->cells[y][x]);
+	      term->cells[y][x] &= ~((guint)A_5250_DIRTYFLAG);
 	    }
 	}
     }
-
-  /* for (i = 0; i < sizeof(attribute_map)/sizeof (int); i++)
-    {
-      static char *test_str = "** This is a test string **";
-    
-      for (x = 0; x < strlen(test_str); x++)
-	gtk5250_terminal_draw_char (term, i % 22, x + ((i / 22) * 40),
-	    test_str[x] | attribute_map[i]);
-    } */
 
   if (GTK_WIDGET_DRAWABLE (widget))
     {
@@ -445,9 +440,7 @@ static void gtk5250_terminal_draw_char (Gtk5250Terminal *term, gint y, gint x, g
     }
 
   /* Draw the cursor (in blue) when it blinks */
-  if(y == tn5250_display_cursor_y(term->char_buffer) &&
-      x == tn5250_display_cursor_x(term->char_buffer) &&
-      term->blink_state)
+  if(y == term->cy && x == term->cx && term->blink_state)
     {
       ch = ch ^ A_5250_REVERSE;
       if ((ch & A_5250_REVERSE) != 0)
@@ -514,9 +507,6 @@ static void gtk5250_terminal_destroy (GtkObject *object)
 
   if(term->conn_tag != 0)
     gtk_input_remove(term->conn_tag);
-
-  if(term->char_buffer != NULL)
-    tn5250_display_destroy(term->char_buffer);
 
   if (GTK_OBJECT_CLASS (parent_class)->destroy)
     (* GTK_OBJECT_CLASS (parent_class)->destroy) (object);
@@ -647,9 +637,17 @@ static int gtkterm_flags (Tn5250Terminal *This)
   return TN5250_TERMINAL_HAS_COLOR;
 }
 
-static void gtkterm_update (Tn5250Terminal *tnThis, Tn5250Display *dsp)
+static void gtkterm_beep (Tn5250Terminal *This)
+{
+  gdk_beep();
+}
+
+static void gtkterm_update (Tn5250Terminal *tnThis, Tn5250DBuffer *dsp)
 {
   Gtk5250Terminal *This;
+  gint y, x;
+  guchar a = 0x20, c;
+  guint attrs;
 
   g_return_if_fail(tnThis != NULL);
   g_return_if_fail(tnThis->data != NULL);
@@ -657,18 +655,58 @@ static void gtkterm_update (Tn5250Terminal *tnThis, Tn5250Display *dsp)
   g_return_if_fail(dsp != NULL);
 
   This = GTK5250_TERMINAL(tnThis->data);
+  This->w = tn5250_dbuffer_width(dsp);
+  This->h = tn5250_dbuffer_height(dsp);
 
-  if(This->char_buffer != NULL)
+  for(y = 0; y < This->h; y++)
     {
-      tn5250_display_destroy(This->char_buffer);
-      This->char_buffer = NULL;
+      for(x = 0; x < This->w; x++)
+	{
+	  c = tn5250_dbuffer_char_at(dsp, y, x);
+	  if ((c & 0xe0) == 0x20)
+	    {
+	      a = (c & 0xff);
+	      if (This->cells[y][x] != (((guchar)' ') | attrs))
+		This->cells[y][x] = ' ' | attrs | A_5250_DIRTYFLAG;
+	    }
+	  else
+	    {
+	      attrs = attribute_map[a - 0x20];
+	      if(attrs == 0) /* NONDISPLAY */
+		{
+		  if (This->cells[y][x] != (((guchar)' ') | attrs))
+		    This->cells[y][x] = ' ' | attrs | A_5250_DIRTYFLAG;
+		}
+	      else
+		{
+		  if ((c < 0x40 && c > 0x00) || c == 0xff) /* UNPRINTABLE */
+		    {
+		      c = ' ';
+		      attrs ^= A_5250_REVERSE;
+		    }
+		  else
+		    c = tn5250_ebcdic2ascii(c);
+		  if (This->cells[y][x] != (c | attrs))
+		    This->cells[y][x] = c | attrs | A_5250_DIRTYFLAG;
+		}
+	    }
+	}
     }
 
-  This->char_buffer = tn5250_display_copy(dsp);
+  if (tn5250_dbuffer_cursor_y (dsp) != This->cy ||
+      tn5250_dbuffer_cursor_x (dsp) != This->cx)
+    {
+      This->cells[This->cy][This->cx] |= A_5250_DIRTYFLAG;
+      This->cy = tn5250_dbuffer_cursor_y (dsp);
+      This->cx = tn5250_dbuffer_cursor_x (dsp);
+      This->cells[This->cy][This->cx] |= A_5250_DIRTYFLAG;
+    }
+
+  This->blink_state = 1;
   gtk_widget_queue_draw ((GtkWidget*) This);
 }
 
-static void gtkterm_update_indicators (Tn5250Terminal *This, Tn5250Display *dsp)
+static void gtkterm_update_indicators (Tn5250Terminal *This, Tn5250DBuffer *dsp)
 {
   /* FIXME: Implement. */
 }

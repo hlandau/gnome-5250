@@ -1,0 +1,53 @@
+dnl Process this file with autoconf to produce a configure script.
+AC_INIT(gnome-5250.c)
+AM_INIT_AUTOMAKE(gnome-5250,0.2)
+
+dnl Checks for programs.
+AC_PROG_CC
+
+dnl *
+dnl * Checks for Gnome and Gnome features.
+dnl *
+AC_PATH_PROG(GNOME_CONFIG,gnome-config,no)
+if test x$GNOME_CONFIG = xno ; then
+	AC_MSG_ERROR(** Can't find gnome-config.  Is Gnome installed? **)
+fi
+AC_MSG_CHECKING(for Gnome C flags)
+GNOME_CFLAGS="`$GNOME_CONFIG --cflags glib gnome gnomeui`"
+CFLAGS="$CFLAGS $GNOME_CFLAGS"
+AC_MSG_RESULT($GNOME_CFLAGS)
+AC_MSG_CHECKING(for Gnome libs)
+GNOME_LIBS="`$GNOME_CONFIG --libs glib gnome gnomeui`"
+LIBS="$LIBS $GNOME_LIBS"
+AC_MSG_RESULT($GNOME_LIBS)
+
+dnl *
+dnl * Checks for lib5250 and lib5250 features.
+dnl *
+AC_PATH_PROG(TN5250_CONFIG,tn5250-config,no)
+if test x$TN5250_CONFIG = xno ; then
+	AC_MSG_ERROR(** Can't find tn5250-config.  Is tn5250 installed? **)
+fi
+AC_MSG_CHECKING(for lib5250 C flags)
+TN5250_CFLAGS="`$TN5250_CONFIG --cflags`"
+CFLAGS="$CFLAGS $TN5250_CFLAGS"
+AC_MSG_RESULT($TN5250_CFLAGS)
+AC_MSG_CHECKING(for lib5250 libs)
+TN5250_LIBS="`$TN5250_CONFIG --libs`"
+LIBS="$LIBS $TN5250_LIBS"
+AC_MSG_RESULT($TN5250_LIBS)
+
+AM_MAINTAINER_MODE
+
+dnl Checks for libraries.
+AC_CHECK_LIB(ibs, main)
+
+dnl Checks for header files.
+
+dnl Checks for typedefs, structures, and compiler characteristics.
+AC_C_CONST
+
+dnl Checks for library functions.
+AC_HEADER_STDC
+
+AC_OUTPUT(Makefile)
