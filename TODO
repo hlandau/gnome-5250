@@ -1,6 +1,24 @@
 gnome-5250 TODO
 ------------------------------------------------------------------------------
 
-* Configure the Gtk5250Terminal with a Tn5250Config object.
-* Configure the Gtk5250PropDlg with a Tn5250Config object (e.g. set it's
-  values.)
+* Complete loading prop dlg controls from config object.
+* Implement writing prop dlg control values to config object.
+* Implement writing config object to ~/.tn5250rc (in lib5250).
+* In tn5250/lib5250, implement `config update callbacks' so that we can
+  adjust font, etc., when called.
+* Disable prop dlg controls which cannot be changed after connect (when
+  connected).
+* Move stream type list to top of gtk5250propdlg.c, or expose from lib5250.
+  (preferrably the latter).
+* Fix pixmap noise at bottom of display (and top).
+* Consolidate DEFAULT_FONT #defines.
+
+Behavior should probably be this:
+- File | New Session... prompts for name of new session and supplies defaults.
+- File | Connect connects to current session.
+- File | Disconnect disconnects from current session.
+- File | Save Session writes to ~/.tn5250rc
+- Session | * is list of sessions (you can select one).
+- Auto-connect is a preference (whether to automatically connect to session
+  selected from Session menu).  This should be a check box at the top of the
+  session menu.

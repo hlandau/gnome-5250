@@ -60,6 +60,7 @@ static void gtk5250_terminal_map (GtkWidget *widget);
 static void gtk5250_terminal_unmap (GtkWidget *widget);
 static gboolean gtk5250_terminal_key_press_event (GtkWidget *widget, GdkEventKey *event);
 static void gtk5250_input_handler (gpointer data, gint source, GdkInputCondition cond);
+static void gtk5250_terminal_update_from_config (Gtk5250Terminal *This);
 
   /* tn5250 implementation handlers */
 static void gtkterm_init (Tn5250Terminal *This);
@@ -172,11 +173,18 @@ static void gtk5250_terminal_init (Gtk5250Terminal *term)
 {
   gint n;
 
-  term->font = gdk_font_load (DEFAULT_FONT);
-  gdk_font_ref (term->font);
-  term->font_w = gdk_char_width (term->font, 'M') + 1;
-  term->font_h = gdk_char_height (term->font, 'M');
+  /* FIXME: Do we have to load our fonts here? */
+  term->font_80 = gdk_font_load (DEFAULT_FONT);
+  gdk_font_ref (term->font_80);
+  term->font_80_w = gdk_char_width (term->font_80, 'M') + 1;
+  term->font_80_h = gdk_char_height (term->font_80, 'M');
 
+  term->font_132 = gdk_font_load (DEFAULT_FONT);
+  gdk_font_ref (term->font_132);
+  term->font_132_w = gdk_char_width (term->font_132, 'M') + 1;
+  term->font_132_h = gdk_char_height (term->font_132, 'M');
+
+  term->config = NULL;
   term->store = NULL;
   term->client_window = NULL;
   term->bg_gc = NULL;
@@ -291,8 +299,8 @@ static void gtk5250_terminal_realize (GtkWidget *widget)
       term->red, term->green, term->blue, 8,
       term->colors, &nallocated);
 
-  term->store = gdk_pixmap_new (term->client_window, term->font_w * 80,
-      (term->font_h + 4) * 26, -1);
+  term->store = gdk_pixmap_new (term->client_window, term->font_80_w * 80,
+      (term->font_80_h + 4) * 26, -1);
 
   term->blink_timeout = gtk_timeout_add (500,
       (GtkFunction)gtk5250_terminal_blink_timeout, term);
@@ -346,9 +354,18 @@ static void gtk5250_terminal_size_request (GtkWidget *widget,
 
   term = GTK5250_TERMINAL (widget);
 
-  requisition->width = term->font_w * term->w + (2 * BORDER_WIDTH);
-  requisition->height = (term->font_h + 4) * (term->h + 2) +
-    (2 * BORDER_WIDTH);
+  if (term->w != 132)
+    {
+      requisition->width = term->font_80_w * term->w + (2 * BORDER_WIDTH);
+      requisition->height = (term->font_80_h + 4) * (term->h + 2) +
+	(2 * BORDER_WIDTH);
+    }
+  else
+    {
+      requisition->width = term->font_132_w * term->w + (2 * BORDER_WIDTH);
+      requisition->height = (term->font_132_h + 4) * (term->h + 2) +
+	(2 * BORDER_WIDTH);
+    }
 }
 
 /*
@@ -386,6 +403,8 @@ static gint gtk5250_terminal_expose (GtkWidget *widget, GdkEventExpose *event)
   Gtk5250Terminal *term;
   GdkColor pen;
   gint y, x;
+  GdkFont *font;
+  gint font_w, font_h;
 
   g_return_val_if_fail (widget != NULL, FALSE);
   g_return_val_if_fail (GTK5250_IS_TERMINAL (widget), FALSE);
@@ -396,15 +415,28 @@ static gint gtk5250_terminal_expose (GtkWidget *widget, GdkEventExpose *event)
 
   term = GTK5250_TERMINAL (widget); 
 
+  if (term->w != 132)
+    {
+      font_w = term->font_80_w;
+      font_h = term->font_80_h;
+      font = term->font_80;
+    }
+  else
+    {
+      font_w = term->font_132_w;
+      font_h = term->font_132_h;
+      font = term->font_132;
+    }
+
   /* gdk_window_clear (widget->window); */
 
   pen.pixel = term->colors[(A_5250_TURQ >> 8) - 1];
   gdk_gc_set_foreground (term->fg_gc, &pen);
   gdk_draw_line (term->store,
       term->fg_gc,
-      0, (term->font_h + 4) * term->h + 4, 
+      0, (font_h + 4) * term->h + 4, 
       widget->allocation.width - (2 * BORDER_WIDTH),
-      (term->font_h + 4) * term->h + 4 );
+      (font_h + 4) * term->h + 4 );
 
   for (y = 0; y < 27; y++)
     {
@@ -424,13 +456,13 @@ static gint gtk5250_terminal_expose (GtkWidget *widget, GdkEventExpose *event)
     {
       /* Draw indicators. */
        gdk_draw_rectangle (term->store, term->bg_gc, 1,
-	  0, term->h * (term->font_h + 4) + 5,
-	  (80 * term->font_w), term->font_h + 4);
+	  0, term->h * (font_h + 4) + 5,
+	  (term->w * font_w), font_h + 4);
 
        pen.pixel = term->colors[(A_5250_WHITE >> 8) - 1];
        gdk_gc_set_foreground (term->fg_gc, &pen);
-       gdk_draw_text (term->store, term->font, term->fg_gc,
-	   1, (term->h + 1) * (term->font_h + 4) + 4,
+       gdk_draw_text (term->store, font, term->fg_gc,
+	   1, (term->h + 1) * (font_h + 4) + 4,
 	   term->ind_buf, 80);
 
       gdk_draw_pixmap (term->client_window, term->fg_gc,
@@ -451,6 +483,21 @@ static void gtk5250_terminal_draw_char (Gtk5250Terminal *term, gint y, gint x, g
   GdkGC *fg, *bg;
   gint color_idx;
   gchar c;
+  GdkFont *font;
+  gint font_w, font_h;
+
+  if (term->w != 132)
+    {
+      font_w = term->font_80_w;
+      font_h = term->font_80_h;
+      font = term->font_80;
+    }
+  else
+    {
+      font_w = term->font_132_w;
+      font_h = term->font_132_h;
+      font = term->font_132;
+    }
   
   color_idx = ((ch & A_5250_COLOR_MASK) >> 8) - 1;
   widget = (GtkWidget *)term;
@@ -490,26 +537,26 @@ static void gtk5250_terminal_draw_char (Gtk5250Terminal *term, gint y, gint x, g
     }
 
   gdk_draw_rectangle (term->store, bg, 1,
-      x * term->font_w, y * (term->font_h + 4) + 4,
-      term->font_w, term->font_h + 4);
+      x * font_w, y * (font_h + 4) + 4,
+      font_w, font_h + 4);
 
   c = (ch & 0x00ff);
-  gdk_draw_text (term->store, term->font, fg,
-      x * term->font_w + 1, (y + 1) * (term->font_h + 4) + 1,
+  gdk_draw_text (term->store, font, fg,
+      x * font_w + 1, (y + 1) * (font_h + 4) + 1,
       &c, 1);
 
   if ((ch & A_5250_UNDERLINE) != 0)
     {
       gdk_draw_line (term->store, fg,
-	  x * term->font_w, (y + 1) * (term->font_h + 4) + 3,
-	  (x + 1) * term->font_w - 1, (y + 1) * (term->font_h + 4) + 3);
+	  x * font_w, (y + 1) * (font_h + 4) + 3,
+	  (x + 1) * font_w - 1, (y + 1) * (font_h + 4) + 3);
     }
 
   if ((ch & A_5250_VERTICAL) != 0)
     {
       gdk_draw_line (term->store, fg,
-	  x * term->font_w, y * (term->font_h + 4) + 4,
-	  x * term->font_w, (y + 1) * (term->font_h + 4) + 3);
+	  x * font_w, y * (font_h + 4) + 4,
+	  x * font_w, (y + 1) * (font_h + 4) + 3);
     }
 }
 
@@ -525,10 +572,16 @@ static void gtk5250_terminal_destroy (GtkObject *object)
 
   term = GTK5250_TERMINAL (object);
 
-  gdk_font_unref (term->font);
+  if (term->font_80 != NULL)
+    gdk_font_unref (term->font_80);
+  if (term->font_132 != NULL)
+    gdk_font_unref (term->font_132);
 
   if(term->conn_tag != 0)
     gtk_input_remove(term->conn_tag);
+
+  if(term->config != NULL)
+    tn5250_config_unref (term->config);
 
   if (GTK_OBJECT_CLASS (parent_class)->destroy)
     (* GTK_OBJECT_CLASS (parent_class)->destroy) (object);
@@ -685,7 +738,18 @@ static void gtkterm_beep (Tn5250Terminal *This)
 
 static int gtkterm_config (Tn5250Terminal *This, Tn5250Config *config)
 {
-  /* FIXME: Load config info. */
+  Gtk5250Terminal *term;
+  Tn5250Config *old_config;
+
+  term = GTK5250_TERMINAL (This->data);
+
+  old_config = term->config;
+  term->config = config;
+  if (term->config != NULL)
+    tn5250_config_ref (term->config);
+  if (old_config != NULL)
+    tn5250_config_unref (old_config);
+  gtk5250_terminal_update_from_config (term);
   return 0;
 }
 
@@ -698,6 +762,7 @@ static void gtkterm_update (Tn5250Terminal *tnThis, Tn5250Display *dsp)
   gboolean have_char = FALSE;
   gboolean display_resized = FALSE;
   GdkRectangle area;
+  gint font_w, font_h;
 
   g_return_if_fail(tnThis != NULL);
   g_return_if_fail(tnThis->data != NULL);
@@ -716,14 +781,24 @@ static void gtkterm_update (Tn5250Terminal *tnThis, Tn5250Display *dsp)
       for (y = 0; y < 28; y++)
 	for (x = 0; x < 132; x++)
 	  This->cells[y][x] = ' ' | A_5250_DIRTYFLAG;
+      if (This->w != 132)
+	{
+	  font_w = This->font_80_w;
+	  font_h = This->font_80_h;
+	}
+      else
+	{
+	  font_w = This->font_132_w;
+	  font_h = This->font_132_h;
+	}
       if (This->store)
 	gdk_pixmap_unref (This->store);
       This->store = gdk_pixmap_new (This->client_window,
-	  This->font_w * This->w, (This->font_h + 4) * (This->h + 1) + 10,
+	  font_w * This->w, (font_h + 4) * (This->h + 1) + 10,
 	  -1);
       gtk_widget_set_usize ((GtkWidget*) This,
-	  This->font_w * This->w + BORDER_WIDTH*2,
-	  (This->font_h + 4) * (This->h + 1) + 10 + BORDER_WIDTH*2);
+	  font_w * This->w + BORDER_WIDTH*2,
+	  (font_h + 4) * (This->h + 1) + 10 + BORDER_WIDTH*2);
     }
 
   for(y = 0; y < This->h; y++)
@@ -926,6 +1001,52 @@ static int gtkterm_getkey (Tn5250Terminal *tnThis)
 
   g_warning("unhandled key 0x%04X (%s)", keyval, gdk_keyval_name(keyval));
   return -1;
+}
+
+static void gtk5250_terminal_update_from_config (Gtk5250Terminal *This)
+{
+  const gchar *s;
+  
+  /* Set the font, width and height, etc. */
+  if (This->font_80 != NULL)
+    gdk_font_unref (This->font_80);
+  s = tn5250_config_get (This->config, "font_80");
+  if (s != NULL)
+    {
+      This->font_80 = gdk_font_load (s);
+      if (This->font_80 == NULL)
+	{
+	  g_warning ("Couldn't load font %s", s);
+	  This->font_80 = gdk_font_load (DEFAULT_FONT);
+	}
+    }
+  else
+    This->font_80 = gdk_font_load (DEFAULT_FONT);
+  gdk_font_ref (This->font_80);
+
+  /* FIXME: Get some real font metrics. */
+  This->font_80_w = gdk_char_width (This->font_80, 'M') + 1;
+  This->font_80_h = gdk_char_height (This->font_80, 'M');
+
+  if (This->font_132 != NULL)
+    gdk_font_unref (This->font_132);
+  s = tn5250_config_get (This->config, "font_132");
+  if (s != NULL)
+    {
+      This->font_132 = gdk_font_load (s);
+      if (This->font_132 == NULL)
+	{
+	  g_warning ("Couldn't load font %s", s);
+	  This->font_132 = gdk_font_load (DEFAULT_FONT);
+	}
+    }
+  else
+    This->font_132 = gdk_font_load (DEFAULT_FONT);
+
+  gdk_font_ref (This->font_132);
+  /* FIXME: Get some real font metrics. */
+  This->font_132_w = gdk_char_width (This->font_132, 'M') + 1;
+  This->font_132_h = gdk_char_height (This->font_132, 'M');
 }
 
 /* vi:set ts=8 sts=2 sw=2 cindent cinoptions=^-2,p8,{.75s,f0,>4,n-2,:0: */

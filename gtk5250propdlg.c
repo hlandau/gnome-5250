@@ -20,6 +20,8 @@
 #include <string.h>
 #include "gtk5250propdlg.h"
 
+#define DEFAULT_FONT "-misc-fixed-*-*-*-*-*-*-*-*-c-*-iso8859-1"
+
 static void	  gtk5250_prop_dlg_class_init	(Gtk5250PropDlgClass *klass);
 static void	  gtk5250_prop_dlg_init		(Gtk5250PropDlg *obj);
 
@@ -28,6 +30,8 @@ static void	  gtk5250_prop_dlg_destroy	(GtkObject *obj);
 static gboolean	  gtk5250_prop_dlg_validate	(Gtk5250PropDlg *This);
 static void	  gtk5250_prop_dlg_apply	(Gtk5250PropDlg *This);
 static void	  gtk5250_prop_dlg_close	(Gtk5250PropDlg *This);
+static void	  gtk5250_prop_dlg_font_80_activate (Gtk5250PropDlg *This);
+static void	  gtk5250_prop_dlg_font_132_activate (Gtk5250PropDlg *This);
 
 static GtkWidget* uline_label			(const gchar *str);
 static GtkWidget* uline_button			(const gchar *str);
@@ -94,13 +98,16 @@ static void gtk5250_prop_dlg_init (Gtk5250PropDlg *This)
   GtkWidget *btnbox;
   GtkWidget *btn;
   GtkWidget *notebook, *page, *label, *lbox;
-  GtkWidget *menu;
+  GtkWidget *menu, *item;
+  gchar *font_spacings[] = { "c", "m", NULL };
 
   g_return_if_fail (GTK5250_IS_PROP_DLG (This));
 
   This->config = NULL;
   This->font_name_80 = NULL;
   This->font_name_132 = NULL;
+  This->font_132_active = FALSE;
+  This->font_80 = NULL;
 
   /* This will be updated from the session object later. */
   gtk_window_set_title (GTK_WINDOW (This), "Session Properties");
@@ -140,8 +147,8 @@ static void gtk5250_prop_dlg_init (Gtk5250PropDlg *This)
   This->name = table_item (page, "_Name", 0, gtk_entry_new ());
   lbox = gtk_option_menu_new ();
   menu = gtk_menu_new ();
-  menu_item (menu, "telnet");
-  menu_item (menu, "debug");
+  This->cn_method_telnet = menu_item (menu, "telnet");
+  This->cn_method_debug = menu_item (menu, "debug");
   gtk_option_menu_set_menu (GTK_OPTION_MENU (lbox), menu);
   This->cn_method = table_item (page, "Connection _Method", 1, lbox);
   This->address = table_item (page, "_Host Address", 2,
@@ -193,14 +200,21 @@ static void gtk5250_prop_dlg_init (Gtk5250PropDlg *This)
   gtk_widget_show (This->font_selector);
   lbox = gtk_option_menu_new ();
   menu = gtk_menu_new ();
-  menu_item (menu, "24x80 Display Font");
-  menu_item (menu, "27x132 Display Font");
+  This->font_80 = item = menu_item (menu, "24x80 Display Font");
+  gtk_signal_connect_object (GTK_OBJECT (item), "activate",
+      GTK_SIGNAL_FUNC (gtk5250_prop_dlg_font_80_activate), GTK_OBJECT (This));
+  item = menu_item (menu, "27x132 Display Font");
+  gtk_signal_connect_object (GTK_OBJECT (item), "activate",
+      GTK_SIGNAL_FUNC (gtk5250_prop_dlg_font_132_activate), GTK_OBJECT (This));
   gtk_option_menu_set_menu (GTK_OPTION_MENU (lbox), menu);
   gtk_box_pack_start (GTK_BOX (page), lbox, TRUE, TRUE, 2);
   gtk_widget_show (lbox);
   gtk_notebook_append_page (GTK_NOTEBOOK (notebook), page, label);
   gtk_widget_show (page);
   gtk_widget_show (label);
+  gtk_font_selection_set_filter (GTK_FONT_SELECTION (This->font_selector),
+      GTK_FONT_FILTER_BASE, GTK_FONT_ALL, 
+      NULL, NULL, NULL, NULL, font_spacings, NULL);
 
   /* Add the 'Colors' page to the notebook. */
   label = uline_label ("C_olors");
@@ -227,9 +241,12 @@ static void gtk5250_prop_dlg_init (Gtk5250PropDlg *This)
  */
 void gtk5250_prop_dlg_set_config (Gtk5250PropDlg *This, Tn5250Config *config)
 {
-  if (This->config)
-    tn5250_config_unref (This->config);
+  Tn5250Config *old_config = This->config;
   This->config = config;
+  if (This->config != NULL)
+    tn5250_config_ref (This->config);
+  if (old_config != NULL)
+    tn5250_config_unref (old_config);
   if (This->config != NULL)
     gtk5250_prop_dlg_update_dialog (This);
 }
@@ -247,14 +264,97 @@ Tn5250Config *gtk5250_prop_dlg_get_config (Gtk5250PropDlg *This)
  */
 void gtk5250_prop_dlg_update_dialog (Gtk5250PropDlg *This)
 {
+  static struct stream_type
+    {
+      char *prefix;
+      char *type;
+    }
+  stream_types[] =
+    {
+	{ "debug:", "debug" },
+	{ "telnet:", "telnet" },
+	{ "tn5250:", "tn5250" },
+	{ NULL, NULL }
+    }, *stream_type_iter;
   const gchar *s;
   g_return_if_fail (This->config != NULL);
 
+  /* Parse the host into type, address, and port. */
   s = tn5250_config_get (This->config, "host");
   if (s != NULL && strcmp (s, ""))
     {
       gchar *cn_method = NULL, *address = NULL, *port = NULL;
+      stream_type_iter = stream_types;
+      while (stream_type_iter->prefix != NULL)
+	{
+	  if (strlen (s) >= strlen (stream_type_iter->prefix)
+	      && !memcmp (s, stream_type_iter->prefix,
+		strlen (stream_type_iter->prefix)))
+	    {
+	      cn_method = stream_type_iter->type;
+	      break;
+	    }
+	  stream_type_iter++;
+	}
+      
+      if (cn_method == NULL)
+	cn_method = "telnet";
+      else
+	s += strlen (stream_type_iter->prefix);
+      
+      address = g_strdup (s);
+      if (!strcmp (cn_method, "telnet") && strrchr (s, ':'))
+	{
+	  port = g_strdup (strrchr (s, ':')+1);
+	  *strrchr (address, ':') = '\0';
+	}
+      else
+	port = g_strdup ("");
+  
+      gtk_entry_set_text (GTK_ENTRY (This->address), address);
+      gtk_entry_set_text (GTK_ENTRY (This->port), port);
+
+      if (!strcmp (cn_method, "telnet"))
+	gtk_menu_item_activate (GTK_MENU_ITEM (This->cn_method_telnet));
+      else if (!strcmp (cn_method, "debug"))
+	gtk_menu_item_activate (GTK_MENU_ITEM (This->cn_method_debug));
+      else
+	g_warning ("Bad cn_method (%s)", cn_method);
+
+      if (address != NULL)
+	g_free (address);
+      if (port != NULL)
+	g_free (port);
     }
+
+  /* Session name */
+  gtk_menu_item_activate (GTK_MENU_ITEM (This->font_80));
+  s = tn5250_config_get (This->config, "env.DEVNAME");
+  if (s == NULL)
+    s = "";
+  gtk_entry_set_text (GTK_ENTRY (This->session_name), s);
+
+  /* Font names (for 80 and 132 column modes)... */
+  if (This->font_name_80 != NULL)
+    g_free (This->font_name_80);
+  s = tn5250_config_get (This->config, "font_80");
+  if (s == NULL || !strcmp (s, ""))
+    This->font_name_80 = g_strdup (DEFAULT_FONT);
+  else
+    This->font_name_80 = g_strdup (s);
+
+  if (This->font_name_132 != NULL)
+    g_free (This->font_name_132);
+  s = tn5250_config_get (This->config, "font_132");
+  if (s == NULL || !strcmp (s, ""))
+    This->font_name_132 = g_strdup (This->font_name_80);
+  else
+    This->font_name_132 = g_strdup (s);
+
+  /* Update selected font. */
+  gtk_font_selection_set_font_name (GTK_FONT_SELECTION (This->font_selector),
+      This->font_name_80);
+  This->font_132_active = FALSE;
 }
 
 /*
@@ -381,6 +481,44 @@ static gchar *get_option_menu_label (GtkWidget *option_menu)
   arg.name = "label";
   gtk_object_arg_get (GTK_OBJECT (option_menu), &arg, NULL);
   return GTK_VALUE_STRING(arg);
+}
+
+/*
+ *  Happens when we choose '24x80' from the font option menu.
+ */
+static void gtk5250_prop_dlg_font_80_activate (Gtk5250PropDlg *This)
+{
+  if (This->font_132_active)
+    {
+      if (This->font_name_132 != NULL)
+	g_free (This->font_name_132);
+      This->font_name_132 = g_strdup (gtk_font_selection_get_font_name (
+	  GTK_FONT_SELECTION (This->font_selector)
+	  ));
+      gtk_font_selection_set_font_name (
+	  GTK_FONT_SELECTION (This->font_selector), This->font_name_80
+	  );
+      This->font_132_active = FALSE;
+    }
+}
+
+/*
+ *  Happens when we choose '27x132' from the font option menu.
+ */
+static void gtk5250_prop_dlg_font_132_activate (Gtk5250PropDlg *This)
+{
+  if (!This->font_132_active)
+    {
+      if (This->font_name_80 != NULL)
+	g_free (This->font_name_80);
+      This->font_name_80 = g_strdup (gtk_font_selection_get_font_name (
+	  GTK_FONT_SELECTION (This->font_selector)
+	  ));
+      gtk_font_selection_set_font_name (
+	  GTK_FONT_SELECTION (This->font_selector), This->font_name_132
+	  );
+      This->font_132_active = TRUE;
+    }
 }
 
 /* vi:set ts=8 sts=2 sw=2 cindent cinoptions=^-2,p8,{.75s,f0,>4,n-2,:0: */

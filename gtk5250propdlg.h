@@ -47,7 +47,11 @@ struct _Gtk5250PropDlg
   GtkWidget *	    address;
   GtkWidget *	    port;
   GtkWidget *	    session_name;
+
   GtkWidget *	    cn_method;
+  GtkWidget *	    cn_method_telnet;
+  GtkWidget *	    cn_method_debug;
+
   GtkWidget *	    emulation_type;
   GtkWidget *	    translation_map;
 
@@ -56,6 +60,8 @@ struct _Gtk5250PropDlg
   GtkWidget *	    font_selector;
   gchar *	    font_name_80;
   gchar *	    font_name_132;
+  GtkWidget *	    font_80;
+  gboolean	    font_132_active;
 
   /* FIXME: Colors */
 };

@@ -41,13 +41,17 @@ struct _Gtk5250Terminal
 {
   GtkWidget	    widget;
 
+  Tn5250Config *    config;
+
   Tn5250Terminal    tn5250_impl;  /* Our implementation of the 5250 object */
   gint		    conn_tag;	  /* Tag from gtk_input_add_full() */
   gint		    pending;	  /* Pending events for waitevent to return */
   guint		    next_keyval;
 
-  GdkFont*	    font;
-  gint		    font_w, font_h;
+  GdkFont*	    font_80;
+  gint		    font_80_w, font_80_h;
+  GdkFont*	    font_132;
+  gint		    font_132_w, font_132_h;
 
   GdkPixmap*	    store;
   GdkWindow*	    client_window;
