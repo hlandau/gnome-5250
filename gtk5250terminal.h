@@ -68,6 +68,7 @@ struct _Gtk5250Terminal
   gushort	    blue[10];
   gulong	    colors[10];
   guint		    blink_timeout;
+  guint		    timeout_id;
 
   gint		    blink_state : 1;	/* Is blink currently on? */
   gint              ruler : 1;

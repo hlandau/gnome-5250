@@ -57,7 +57,7 @@ static void gtk5250_terminal_size_allocate (GtkWidget *widget,
 static gint gtk5250_terminal_expose (GtkWidget *widget, GdkEventExpose *event);
 static void gtk5250_terminal_destroy (GtkObject *object);
 static void gtk5250_terminal_draw_char (Gtk5250Terminal *term, gint y, gint x, guint ch);
-static void gtk5250_terminal_blink_timeout (Gtk5250Terminal *term);
+static gboolean gtk5250_terminal_blink_timeout (Gtk5250Terminal *term);
 static void gtk5250_terminal_map (GtkWidget *widget);
 static void gtk5250_terminal_unmap (GtkWidget *widget);
 static gboolean gtk5250_terminal_key_press_event (GtkWidget *widget, GdkEventKey *event);
@@ -372,8 +372,8 @@ static void gtk5250_terminal_realize (GtkWidget *widget)
   gdk_draw_rectangle(term->store, term->bg_gc, TRUE, 0, 0,
       widget->allocation.width+1, widget->allocation.height+1);
 
-  term->blink_timeout = gtk_timeout_add (500,
-      (GtkFunction)gtk5250_terminal_blink_timeout, term);
+  term->timeout_id = g_timeout_add (500,
+      (GSourceFunc)gtk5250_terminal_blink_timeout, term);
 }
 
 /*
@@ -394,7 +394,7 @@ static void gtk5250_terminal_unrealize (GtkWidget *widget)
   gdk_pixmap_unref (term->store);
   term->store = NULL;
 
-  gtk_timeout_remove (term->blink_timeout);
+  g_source_remove (term->timeout_id);
   term->blink_timeout = 0;
 
   gdk_color_context_free (term->color_ctx);
@@ -613,6 +613,7 @@ static void gtk5250_terminal_draw_char (Gtk5250Terminal *term, gint y, gint x, g
   /* Draw the cursor (in blue) when it blinks */
   if(y == term->cy && x == term->cx && term->blink_state)
     {
+      TN5250_LOG(("BLINK: state = %d\n", term->blink_state ? 1 : 0));
       ch = ch ^ A_5250_REVERSE;
       if ((ch & A_5250_REVERSE) != 0)
 	color_idx = (A_5250_BLUE >> 8) - 1;
@@ -697,10 +698,12 @@ static void gtk5250_terminal_destroy (GtkObject *object)
 /*
  *  This is the timeout handler which handles cursor/text blinking.
  */
-static void gtk5250_terminal_blink_timeout (Gtk5250Terminal *term)
+static gboolean gtk5250_terminal_blink_timeout (Gtk5250Terminal *term)
 {
   term->blink_state = !term->blink_state;
+  TN5250_LOG(("BLINK: state changed to %d\n", term->blink_state ? 1: 0));
   gtk_widget_queue_draw ((GtkWidget*) term);
+  return TRUE;
 }
 
 /*

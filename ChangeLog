@@ -1,3 +1,7 @@
+Thu Feb 13, 2003 Scott Klement <klemscot@klements.com>
+	* Change cursor blinking to use g_timeout_add instead of the
+	  (deprecated) gtk_timeout_add.
+
 Wed Feb 05, 2003 Scott Klement <klemscot@klements.com>
 	* Added key bindings for shift+left, shift+right and shift+home
 	  to match the support in cursesterm.
