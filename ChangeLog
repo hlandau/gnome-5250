@@ -1,3 +1,7 @@
+Tue Feb 04, 2003 Scott Klement <klemscot@klements.com>
+	* Added color keyword support (to match Windows & Curses terminals)
+	* Added mouse selections & copy/paste support
+
 Mon May 22, 2000 Jay 'Eraserhead' Felice <jfelice@cronosys.com>
 	* Added keyboard mapping for most of keypad, handle of Shift+Tab =
 	  backtab.  Shift+Esc = SysReq and Esc is Attention, etc.

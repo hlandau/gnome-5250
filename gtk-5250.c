@@ -36,12 +36,14 @@ const char *tracefile = NULL;
 static GtkItemFactoryEntry menu_items[] =
 {
   {"/_File", NULL, NULL, 0, "<Branch>"},
+/*
   {"/File/_Connect...", NULL, file_connect_callback, 0, NULL},
   {"/File/_Disconnect", NULL, file_disconnect_callback, 0, NULL},
   {"/File/sep1", NULL, NULL, 0, "<Separator>"},
   {"/File/_Preferences...", NULL, file_preferences_callback, 0, NULL},
+  */
   {"/File/sep2", NULL, NULL, 0, "<Separator>"},
-  {"/File/E_xit", NULL, file_exit_callback, 0, NULL},
+  {"/File/E_xit   Ctrl-Q", NULL, file_exit_callback, 0, NULL},
   {"/_Help", NULL, NULL, 0, "<Branch>"},
   {"/Help/_About", NULL, help_about_callback, 0, NULL},
 };

@@ -37,6 +37,8 @@ extern "C" {
 typedef struct _Gtk5250Terminal Gtk5250Terminal;
 typedef struct _Gtk5250TerminalClass Gtk5250TerminalClass;
 
+#define GTK5250_MAX_K_BUF 64
+
 struct _Gtk5250Terminal
 {
   GtkWidget	    widget;
@@ -46,7 +48,9 @@ struct _Gtk5250Terminal
   Tn5250Terminal    tn5250_impl;  /* Our implementation of the 5250 object */
   gint		    conn_tag;	  /* Tag from gtk_input_add_full() */
   gint		    pending;	  /* Pending events for waitevent to return */
-  guint		    next_keyval;
+  guint             next_keyval;
+  guint		    k_buf[GTK5250_MAX_K_BUF];
+  gint              k_buf_len;
 
   GdkFont*	    font_80;
   gint		    font_80_w, font_80_h;
@@ -59,17 +63,26 @@ struct _Gtk5250Terminal
   GdkGC*	    fg_gc;
   GdkColorContext*  color_ctx;
 
-  gushort	    red[8];
-  gushort	    green[8];
-  gushort	    blue[8];
-  gulong	    colors[8];
+  gushort	    red[10];
+  gushort	    green[10];
+  gushort	    blue[10];
+  gulong	    colors[10];
   guint		    blink_timeout;
 
   gint		    blink_state : 1;	/* Is blink currently on? */
+  gint              ruler : 1;
 
   gint		    cx, cy, w, h;       /* Cursor position/display size. */
   guint		    cells[28][132];	/* Data currently on display. */
   gchar		    ind_buf[80];	/* Indicator buffer. */
+
+  GdkGC*	    sel_gc;		 /* selection GC */
+  gint		    ssx, ssy, sex, sey;  /* selection start/end positions */
+                                         /* That's (s)election (e)nd (x) :) */
+  gboolean          sel_visible;
+  guchar           *copybuf;             /* copy buffer (for copy->clipboard)*/
+  gint              copybufsize;
+  Tn5250Display	   *display;
 };
 
 struct _Gtk5250TerminalClass

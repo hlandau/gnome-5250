@@ -18,6 +18,7 @@
 
 #include <string.h>
 #include <gtk/gtk.h>
+#include <gtk/gtkselection.h>
 #include <gdk/gdkkeysyms.h>
 #include "gtk5250terminal.h"
 
@@ -33,6 +34,7 @@
 #define A_5250_BLUE		0x600
 #define A_5250_BLACK		0x700
 #define A_5250_GREEN		0x800
+#define A_5250_RULER_COLOR      0x900
 #define A_5250_COLOR_MASK	0xf00
 
 #define A_5250_REVERSE		0x1000
@@ -61,6 +63,16 @@ static void gtk5250_terminal_unmap (GtkWidget *widget);
 static gboolean gtk5250_terminal_key_press_event (GtkWidget *widget, GdkEventKey *event);
 static void gtk5250_input_handler (gpointer data, gint source, GdkInputCondition cond);
 static void gtk5250_terminal_update_from_config (Gtk5250Terminal *This);
+static gint gtk5250_terminal_button_press_event (GtkWidget *widget, GdkEventButton *event);
+static gint gtk5250_terminal_button_release_event (GtkWidget *widget, GdkEventButton *event);
+static gint gtk5250_terminal_motion_notify_event (GtkWidget *widget, GdkEventMotion *event);
+static void gtk5250_draw_selection (Gtk5250Terminal *term, gboolean fill);
+static gint gtk5250_clear_selection (GtkWidget *widget, GdkEventSelection *event);
+static void gtk5250_copy_selection (GtkWidget *widget, GtkSelectionData *selection_data, guint info, guint timestamp);
+static void gtk5250_selection_received (GtkWidget *widget, GtkSelectionData *selection_data, guint time);
+static void gtk5250_terminal_queuekey(Gtk5250Terminal *term, gint key);
+
+
 
   /* tn5250 implementation handlers */
 static void gtkterm_init (Tn5250Terminal *This);
@@ -78,12 +90,32 @@ static int gtkterm_config (Tn5250Terminal *This, Tn5250Config *config);
 
 static GtkWidgetClass *parent_class = NULL;
 
+struct _Gtk5250_color_map {
+    gchar *name;
+    gchar *spec;
+};
+typedef struct _Gtk5250_color_map Gtk5250_color_map;
+
+static Gtk5250_color_map colorlist[] =
+{
+  { "white",       "rgb:ff/ff/ff" },
+  { "red",         "rgb:ff/00/00" },
+  { "turquoise",   "rgb:00/ff/ff" },
+  { "yellow",      "rgb:ff/ff/00" },
+  { "pink",        "rgb:ff/80/80" },
+  { "blue",        "rgb:00/80/ff" },
+  { "black",       "rgb:00/00/00" },
+  { "green",       "rgb:00/ff/00" },
+  { "ruler_color", "rgb:c0/00/00" },
+  { NULL, NULL }
+};
+
 static gushort default_red[8] = 
   { 0xffff, 0xffff, 0x0000, 0xffff, 0xffff, 0x0000, 0x0000, 0x0000 };
 static gushort default_green[8] =
-  { 0xffff, 0x0000, 0xc8c8, 0xffff, 0x8080, 0x0000, 0x0000, 0xffff };
+  { 0xffff, 0x0000, 0xffff, 0xffff, 0x8080, 0xc8c8, 0x0000, 0xffff };
 static gushort default_blue[8] =
-  { 0xffff, 0x0000, 0xc8c8, 0x0000, 0x8080, 0xffff, 0x0000, 0x0000 };
+  { 0xffff, 0x0000, 0xffff, 0x0000, 0x8080, 0xffff, 0x0000, 0x0000 };
 
 static int attribute_map[] =
 {A_5250_GREEN,
@@ -164,6 +196,12 @@ static void gtk5250_terminal_class_init (Gtk5250TerminalClass *klass)
   widget_class->map = gtk5250_terminal_map;
   widget_class->unmap = gtk5250_terminal_unmap;
   widget_class->key_press_event = gtk5250_terminal_key_press_event;
+  widget_class->button_press_event = gtk5250_terminal_button_press_event;
+  widget_class->button_release_event = gtk5250_terminal_button_release_event;
+  widget_class->motion_notify_event = gtk5250_terminal_motion_notify_event;
+  widget_class->selection_get = gtk5250_copy_selection;
+  widget_class->selection_clear_event = gtk5250_clear_selection;
+  widget_class->selection_received = gtk5250_selection_received;
 }
 
 /*
@@ -172,6 +210,7 @@ static void gtk5250_terminal_class_init (Gtk5250TerminalClass *klass)
 static void gtk5250_terminal_init (Gtk5250Terminal *term)
 {
   gint n;
+  GdkColor clr;
 
   /* FIXME: Do we have to load our fonts here? */
   term->font_80 = gdk_font_load (DEFAULT_FONT);
@@ -195,11 +234,20 @@ static void gtk5250_terminal_init (Gtk5250Terminal *term)
   term->cx = term->cy = 0;
   term->w = 80;
   term->h = 24;
+  term->sel_gc = NULL;
+  term->ssx = term->ssy = term->sex = term->sey = -1;
+  term->sel_visible = FALSE;
+  term->copybuf = NULL;
+  term->copybufsize = 0;
+  term->ruler = 1;
 
-  for (n = 0; n < 8; n++) {
-    term->red[n] = default_red[n];
-    term->green[n] = default_green[n];
-    term->blue[n] = default_blue[n];
+  n = 0;
+  while (colorlist[n].name != NULL) {
+      gdk_color_parse(colorlist[n].spec, &clr);
+      term->red[n]   = clr.red;
+      term->green[n] = clr.green;
+      term->blue[n]  = clr.blue;
+      n++;
   }
 
   memset (term->cells, 0, sizeof (term->cells));
@@ -224,6 +272,9 @@ static void gtk5250_terminal_init (Gtk5250Terminal *term)
 
   term->tn5250_impl.conn_fd = -1;
   term->tn5250_impl.data = (void*)term;
+
+  gtk_selection_add_target (GTK_WIDGET(term), GDK_SELECTION_PRIMARY,
+                              GDK_SELECTION_TYPE_STRING, 1);
 }
 
 /*
@@ -254,6 +305,7 @@ static void gtk5250_terminal_realize (GtkWidget *widget)
 {
   Gtk5250Terminal *term;
   GdkWindowAttr attributes;
+  GdkColor pen;
   gint attributes_mask;
   gint nallocated;
 
@@ -271,7 +323,9 @@ static void gtk5250_terminal_realize (GtkWidget *widget)
   attributes.wclass = GDK_INPUT_OUTPUT;
   attributes.window_type = GDK_WINDOW_CHILD;
   attributes.event_mask = gtk_widget_get_events (widget) | GDK_EXPOSURE_MASK
-    | GDK_KEY_PRESS_MASK | GDK_KEY_RELEASE_MASK;
+    | GDK_KEY_PRESS_MASK | GDK_KEY_RELEASE_MASK 
+    | GDK_BUTTON_PRESS_MASK | GDK_BUTTON_RELEASE_MASK 
+    | GDK_BUTTON1_MOTION_MASK ;
   attributes.visual = gtk_widget_get_visual (widget);
   attributes.colormap = gtk_widget_get_colormap (widget);
   attributes_mask = GDK_WA_X | GDK_WA_Y | GDK_WA_VISUAL | GDK_WA_COLORMAP;
@@ -293,6 +347,13 @@ static void gtk5250_terminal_realize (GtkWidget *widget)
   term->color_ctx = gdk_color_context_new (gtk_widget_get_visual (widget),
 	gtk_widget_get_colormap (widget));
 
+  term->sel_gc = gdk_gc_new (term->client_window);
+  gdk_gc_set_function(term->sel_gc, GDK_INVERT);
+  term->ssx = term->ssy = term->sex = term->sey = -1;
+  term->sel_visible = FALSE;
+  term->copybuf = NULL;
+  term->copybufsize = 0;
+
   memset (term->colors, 0, sizeof (term->colors));
   nallocated = 0;
   gdk_color_context_get_pixels (term->color_ctx,
@@ -301,6 +362,13 @@ static void gtk5250_terminal_realize (GtkWidget *widget)
 
   term->store = gdk_pixmap_new (term->client_window, term->font_80_w * 80,
       (term->font_80_h + 4) * 26, -1);
+
+  /*  intialize entire background color to black */
+
+  pen.pixel = term->colors[(A_5250_BLACK >> 8) - 1];
+  gdk_gc_set_foreground (term->bg_gc, &pen);
+  gdk_draw_rectangle(term->store, term->bg_gc, TRUE, 0, 0,
+      widget->allocation.width+1, widget->allocation.height+1);
 
   term->blink_timeout = gtk_timeout_add (500,
       (GtkFunction)gtk5250_terminal_blink_timeout, term);
@@ -335,6 +403,13 @@ static void gtk5250_terminal_unrealize (GtkWidget *widget)
 
   gdk_gc_destroy (term->fg_gc);
   term->fg_gc = NULL;
+
+  gdk_gc_destroy (term->sel_gc);
+  term->sel_gc = NULL;
+
+  g_free(term->copybuf);
+  term->copybuf = NULL;
+  term->copybufsize = 0;
 
   if (GTK_WIDGET_CLASS (parent_class)->unrealize)
     (* GTK_WIDGET_CLASS (parent_class)->unrealize) (widget);
@@ -451,6 +526,19 @@ static gint gtk5250_terminal_expose (GtkWidget *widget, GdkEventExpose *event)
 	    }
 	}
     }
+
+  if (term->ruler) {
+       gint rx,ry;
+       rx = term->cx * font_w;
+       ry = (term->cy * (font_h + 4)) + 4;
+       pen.pixel = term->colors[(A_5250_RULER_COLOR >> 8) - 1];
+       gdk_gc_set_foreground (term->fg_gc, &pen);
+       gdk_draw_line (term->store, term->fg_gc,
+            0, ry, widget->allocation.width - (2*BORDER_WIDTH), ry);
+       gdk_draw_line (term->store, term->fg_gc,
+            rx, 0, rx, term->h * (font_h+4) + 3);
+  }
+       
 
   if (GTK_WIDGET_DRAWABLE (widget))
     {
@@ -583,6 +671,11 @@ static void gtk5250_terminal_destroy (GtkObject *object)
   if(term->config != NULL)
     tn5250_config_unref (term->config);
 
+  if (term->copybuf != NULL)
+    g_free(term->copybuf);
+  term->copybuf = NULL;
+  term->copybufsize = 0;
+
   if (GTK_OBJECT_CLASS (parent_class)->destroy)
     (* GTK_OBJECT_CLASS (parent_class)->destroy) (object);
 }
@@ -697,9 +790,9 @@ static gboolean gtk5250_terminal_key_press_event (GtkWidget *widget, GdkEventKey
     case GDK_KP_Enter:
     case GDK_Return:
       if (tn5250_config_get_bool (term->config, "bassackwards"))
-	term->next_keyval = K_ENTER;
-      else
 	term->next_keyval = K_FIELDEXIT;
+      else
+	term->next_keyval = K_ENTER;
       break;
 
     case GDK_KP_Home:
@@ -759,9 +852,9 @@ static gboolean gtk5250_terminal_key_press_event (GtkWidget *widget, GdkEventKey
     case GDK_Control_L:	    term->next_keyval = K_RESET; break;
     case GDK_Control_R:
       if (tn5250_config_get_bool (term->config, "bassackwards"))
-	term->next_keyval = K_FIELDEXIT;
-      else
 	term->next_keyval = K_ENTER;
+      else
+	term->next_keyval = K_FIELDEXIT;
       break;
     case GDK_BackSpace:	    term->next_keyval = K_BACKSPACE; break;
     case GDK_Insert:	    term->next_keyval = K_INSERT; break;
@@ -782,6 +875,11 @@ static gboolean gtk5250_terminal_key_press_event (GtkWidget *widget, GdkEventKey
     case GDK_3270_Attn:	    term->next_keyval = K_ATTENTION; break;
     case GDK_3270_PrintScreen: term->next_keyval = K_PRINT; break;
     case GDK_3270_Enter:    term->next_keyval = K_ENTER; break;
+
+    case 'Q':
+    case 'q': 
+      if (event->state & GDK_CONTROL_MASK) gtk_exit(0);
+      break; 
 
     default:
       if (term->next_keyval >= 127)
@@ -885,6 +983,9 @@ static void gtkterm_update (Tn5250Terminal *tnThis, Tn5250Display *dsp)
     display_resized = TRUE;
   This->w = tn5250_display_width(dsp);
   This->h = tn5250_display_height(dsp);
+  This->display = dsp;
+
+  gtk5250_clear_selection(GTK_WIDGET(This), NULL);
 
   if (display_resized)
     {
@@ -1032,6 +1133,7 @@ static int gtkterm_getkey (Tn5250Terminal *tnThis)
 {
   Gtk5250Terminal *This;
   guint keyval;
+ gint j;
 
   g_return_val_if_fail(tnThis != NULL,-1);
   g_return_val_if_fail(tnThis->data != NULL, -1);
@@ -1039,8 +1141,14 @@ static int gtkterm_getkey (Tn5250Terminal *tnThis)
 
   This = GTK5250_TERMINAL(tnThis->data);
 
-  if (This->next_keyval == 0)
-    return -1;
+  if (This->next_keyval == 0) {
+    if (This->k_buf_len == 0)
+        return -1;
+    This->next_keyval = This->k_buf[0];
+    This->k_buf_len --;
+    for (j=0; j<This->k_buf_len; j++)
+       This->k_buf[j] = This->k_buf[j+1];
+  }
 
   keyval = This->next_keyval;
   This->next_keyval = 0;
@@ -1050,6 +1158,11 @@ static int gtkterm_getkey (Tn5250Terminal *tnThis)
 static void gtk5250_terminal_update_from_config (Gtk5250Terminal *This)
 {
   const gchar *s;
+  gint n, r, g, b;
+  const gchar *spec;
+  GdkColor clr;
+  GdkColor pen;
+  gchar temp[15];
   
   /* Set the font, width and height, etc. */
   if (This->font_80 != NULL)
@@ -1091,6 +1204,412 @@ static void gtk5250_terminal_update_from_config (Gtk5250Terminal *This)
   /* FIXME: Get some real font metrics. */
   This->font_132_w = gdk_char_width (This->font_132, 'M') + 1;
   This->font_132_h = gdk_char_height (This->font_132, 'M');
+
+  if (tn5250_config_get_bool(This->config, "black_on_white")) {
+      gdk_color_parse("rgb:00/00/00", &clr);
+      for (n=0; n<(A_5250_GREEN >> 8); n++) {
+           This->red[n]   = clr.red;
+           This->green[n] = clr.green;
+           This->blue[n]  = clr.blue;
+      }
+      gdk_color_parse("rgb:ff/ff/ff", &clr);
+      n = (A_5250_BLACK >> 8) - 1;
+      This->red[n]   = clr.red;
+      This->green[n] = clr.green;
+      This->blue[n]  = clr.blue;
+  }
+
+  if (tn5250_config_get_bool(This->config, "white_on_black")) {
+      gdk_color_parse("rgb:ff/ff/ff", &clr);
+      for (n=0; n<(A_5250_GREEN >> 8); n++) {
+           This->red[n]   = clr.red;
+           This->green[n] = clr.green;
+           This->blue[n]  = clr.blue;
+      }
+      gdk_color_parse("rgb:00/00/00", &clr);
+      n = (A_5250_BLACK >> 8) - 1;
+      This->red[n]   = clr.red;
+      This->green[n] = clr.green;
+      This->blue[n]  = clr.blue;
+  }
+
+  n = 0;
+  while (colorlist[n].name != NULL) {
+      if ((spec=tn5250_config_get(This->config, colorlist[n].name)) != NULL)  {
+          g_print("colorname = %s, config val = %s\n", colorlist[n].name, spec);
+          if (gdk_color_parse(spec, &clr)) {
+               This->red[n]   = clr.red;
+               This->green[n] = clr.green;
+               This->blue[n]  = clr.blue;
+          }
+          else if (tn5250_parse_color(This->config, colorlist[n].name,
+                                 &r, &g, &b) != -1)  {
+               sprintf(temp, "rgb:%02x/%02x/%02x", r&0xff, g&0xff, b&0xff);
+               if (gdk_color_parse(temp, &clr)) {
+                    This->red[n]   = clr.red;
+                    This->green[n] = clr.green;
+                    This->blue[n]  = clr.blue;
+               }
+          }
+      }
+      n++;
+  }
+
+
+  /*  intialize entire background to "black" color */
+
+  if (This->store != NULL && This->bg_gc!=NULL) {
+     pen.pixel = This->colors[(A_5250_BLACK >> 8) - 1];
+     gdk_gc_set_foreground (This->bg_gc, &pen);
+     gdk_draw_rectangle(This->store, This->bg_gc, TRUE, 0, 0,
+         GTK_WIDGET(This)->allocation.width+1, 
+         GTK_WIDGET(This)->allocation.height+1);
+  }
+
 }
 
-/* vi:set ts=8 sts=2 sw=2 cindent cinoptions=^-2,p8,{.75s,f0,>4,n-2,:0: */
+static gint
+gtk5250_terminal_button_press_event (GtkWidget *widget,
+				     GdkEventButton *event) {
+    Gtk5250Terminal *term;
+
+    g_return_val_if_fail (widget != NULL, FALSE);
+    g_return_val_if_fail (GTK5250_IS_TERMINAL(widget), FALSE);
+    g_return_val_if_fail (event != NULL, FALSE);
+
+    term = GTK5250_TERMINAL(widget);
+
+    switch (event->button) {
+
+      case 1:  /* select text */
+        gtk5250_clear_selection(widget, NULL);
+        term->ssx = term->sex = event->x;
+        term->ssy = term->sey = event->y;
+	/* draw new box */
+        gtk5250_draw_selection (term, FALSE);
+        gtk_widget_draw (widget, NULL);
+        return FALSE;
+
+      case 2:  /* paste text */
+	gtk_selection_convert (widget, GDK_SELECTION_PRIMARY, 
+	                               GDK_SELECTION_TYPE_STRING, 
+				       GDK_CURRENT_TIME);
+	return FALSE;
+    }
+
+    return FALSE;
+}
+
+static gint
+gtk5250_terminal_button_release_event (GtkWidget *widget,
+				       GdkEventButton *event) {
+    Gtk5250Terminal *term;
+    gint font_w, font_h;
+    gint cx, cy;
+    gint movex, movey;
+    gint sx, sy, ex, ey;
+    guchar c;
+    gint bp, x, y;
+
+    g_return_val_if_fail (widget != NULL, FALSE);
+    g_return_val_if_fail (GTK5250_IS_TERMINAL(widget), FALSE);
+    g_return_val_if_fail (event != NULL, FALSE);
+
+    term = GTK5250_TERMINAL(widget);
+
+    if (event->button != 1)
+         return FALSE;
+    if (!term->sel_visible)
+         return FALSE;
+
+    /* erase box */
+    gtk5250_draw_selection (term, FALSE);
+
+    term->sex = event->x;
+    term->sey = event->y;
+
+    if (term->sex<0) term->sex = 0;
+    if (term->sey<0) term->sey = 0;
+
+/* get font height/width */
+
+    if (term->w != 132) {
+      font_w = term->font_80_w;
+      font_h = term->font_80_h;
+    } else {
+      font_w = term->font_132_w;
+      font_h = term->font_132_h;
+    }
+
+/* if flip start/end coordinates if one is higher than the other */
+
+#define TN5250_FLIPEM(a, b)  if (a>b) { x = a; a = b; b = x; }
+          TN5250_FLIPEM(term->ssx, term->sex)
+          TN5250_FLIPEM(term->ssy, term->sey)
+#undef TN5250_FLIPEM
+    
+/* save the amount that the pointer has moved */
+    movex = term->sex - term->ssx;
+    movey = term->sey - term->ssy;
+
+/* constrain coordinates to the window's client area */
+
+    if (term->sex < 0) term->sex = 0;
+    if (term->sex > widget->allocation.width) 
+             term->sex = widget->allocation.width;
+    if (term->sey < 0) term->sey = 0;
+    if (term->sey > widget->allocation.height)
+             term->sey = widget->allocation.height;
+
+    if (term->ssx < 0) term->ssx = 0;
+    if (term->ssx > widget->allocation.width) 
+             term->ssx = widget->allocation.width;
+    if (term->ssy < 0) term->ssy = 0;
+    if (term->ssy > widget->allocation.height)
+             term->ssy = widget->allocation.height;
+
+/* move start position to a character boundary */
+
+    cx = term->ssx / font_w;
+    term->ssx = cx * font_w;
+    cy = (term->ssy - 4) / (font_h + 4);
+    term->ssy = (cy * (font_h + 4)) + 4;
+
+/* move end position to a character boundary */
+
+    cx = term->sex / font_w;
+    if (term->sex % font_w) cx++;
+    term->sex = cx * font_w - 1;
+    if (term->sex < 0) term->sex = 0;
+    cy = (term->sey - 4) / (font_h + 4);
+    if ((term->sey - 4) % (font_h + 4)) cy++;
+    term->sey = cy * (font_h + 4) + 3;
+
+/* draw new (solid) box */
+    gtk5250_draw_selection (term, TRUE);
+
+/* if the start/end positions haven't changed much, the user probably
+    wasn't trying to select anything...  */
+
+     if (movex<2 && movey<2)  {
+           gtk5250_clear_selection(widget, NULL);
+           return FALSE;
+     }
+
+/* remove previous contents of copy buffer */
+
+/*
+     if (gdk_selection_owner_get (GDK_SELECTION_PRIMARY) == widget->window) {
+         gtk_selection_owner_set (NULL, GDK_SELECTION_PRIMARY, 
+	                          GDK_CURRENT_TIME);
+     }
+*/
+
+     if (term->copybuf != NULL) 
+          g_free(term->copybuf);
+     term->copybuf = NULL;
+     term->copybufsize = 0;
+
+/* calculate start/end character positions of selected region */
+
+     sx = term->ssx / font_w;
+     ex = (term->sex+1) / font_w;
+     sy = (term->ssy - 4) / (font_h + 4);
+     ey = (term->sey - 3) / (font_h + 4);
+
+/* copy the character cells into the copy buffer.  Add a newline char
+   whenever we move to a different line on the screen */
+
+     term->copybufsize = ((ex-sx)+1) * ((ey-sy)+1);
+     term->copybuf = g_malloc((term->copybufsize+1) * sizeof(guchar));
+     memset(term->copybuf, 0, term->copybufsize+1);
+     bp = -1;
+
+     for (y=sy; y<ey; y++) {
+ 	for (x=sx; x<ex; x++) {
+ 	    c = (guchar)(term->cells[y][x] & 0xff);
+ 	    bp++;
+ 	    if (bp==term->copybufsize) break;
+ 	    term->copybuf[bp] = c;
+ 	}
+ 	if (y != (ey-1)) {
+	    bp++;
+	    if (bp==term->copybufsize) break;
+	    term->copybuf[bp] = '\n';
+        }
+    }
+
+/* claim ownership of the "primary selection" (main clipboard).  If
+    it fails, we'll unselect the text, since we won't be able to 
+    transfer it to clipboard... */
+
+    if (!gtk_selection_owner_set (widget, 
+	                         GDK_SELECTION_PRIMARY, 
+				 GDK_CURRENT_TIME       )) {
+           TN5250_LOG (("GTK: gtk_selection_owner_set failed!!\n"));
+           gtk5250_clear_selection (widget, NULL);
+    }
+
+    gtk_widget_draw (GTK_WIDGET(term), NULL);
+    return FALSE;
+}
+
+static gint
+gtk5250_terminal_motion_notify_event (GtkWidget *widget,
+				      GdkEventMotion *event) {
+    Gtk5250Terminal *term;
+
+    g_return_val_if_fail (widget != NULL, FALSE);
+    g_return_val_if_fail (GTK5250_IS_TERMINAL(widget), FALSE);
+    g_return_val_if_fail (event != NULL, FALSE);
+
+    term = GTK5250_TERMINAL(widget);
+
+    /* erase old box */
+    gtk5250_draw_selection (term, FALSE);
+
+    term->sex = event->x;
+    term->sey = event->y;
+
+    if (term->sex < 0) term->sex = 0;
+    if (term->sey < 0) term->sey = 0;
+
+
+    /* draw new box */
+    gtk5250_draw_selection (term, FALSE);
+
+    gtk_widget_draw (GTK_WIDGET(term), NULL);
+    return FALSE;
+}
+
+
+static void
+gtk5250_draw_selection (Gtk5250Terminal *term, gboolean fill) {
+
+    int sx, sy;
+    int w, h;
+
+    if (term->ssx <= term->sex) {
+	 sx = term->ssx;
+	 w = (term->sex - term->ssx) + 1;
+    }
+    else {
+	 sx = term->sex;
+	 w = (term->ssx - term->sex) + 1;
+    }
+
+    if (term->ssy <= term->sey) {
+	 sy = term->ssy;
+	 h = (term->sey - term->ssy) + 1;
+    }
+    else {
+	 sy = term->sey;
+	 h = (term->ssy - term->sey) + 1;
+    }
+
+    if (fill) { w++; h++; };
+
+    if (term->sel_visible)
+         term->sel_visible = FALSE;
+    else
+         term->sel_visible = TRUE;
+
+    gdk_draw_rectangle( term->store, term->sel_gc, fill, sx, sy, w, h);
+
+}
+
+static void
+gtk5250_copy_selection (GtkWidget *widget,
+                        GtkSelectionData *selection_data,
+		        guint info, guint timestamp) {
+
+    g_return_if_fail (widget != NULL);
+
+    gtk_selection_data_set (selection_data, GDK_SELECTION_TYPE_STRING,
+          8*sizeof(guchar), GTK5250_TERMINAL(widget)->copybuf, 
+                            GTK5250_TERMINAL(widget)->copybufsize);
+
+}
+
+static gint
+gtk5250_clear_selection (GtkWidget *widget,
+                         GdkEventSelection *event) {
+
+    g_return_val_if_fail (widget != NULL, FALSE);
+
+    /* since we are overriding the default handler for this event,
+       we need to call the GTK handler manually (for system events)
+       Otherwise, GTK will lose track of it's internal state...    */
+    if (event != NULL) 
+       if (!gtk_selection_clear (widget, event))
+           return FALSE;
+
+    if (GTK5250_TERMINAL(widget)->sel_visible) {
+        gtk5250_draw_selection (GTK5250_TERMINAL(widget), TRUE);
+        GTK5250_TERMINAL(widget)->sel_visible = FALSE;
+        gtk_widget_draw (widget, NULL);
+    }
+
+    return FALSE;
+}
+
+static void
+gtk5250_selection_received (GtkWidget *widget,
+                            GtkSelectionData *selection_data,
+			    guint            time) {
+
+     guchar *buf, *p;
+     Gtk5250Terminal *term;
+     gint thisrow;
+
+     g_return_if_fail (widget != NULL);
+     g_return_if_fail (selection_data->type == GDK_TARGET_STRING);
+     g_return_if_fail (selection_data->length > 0);
+
+     term = GTK5250_TERMINAL(widget);
+     g_return_if_fail (term->display !=NULL);
+
+     buf = g_malloc((selection_data->length+1) * sizeof(guchar));
+     memcpy(buf, selection_data->data, selection_data->length);
+     buf[selection_data->length] = '\0';
+     p = buf;
+
+     thisrow = 0;
+     while (*p) {
+        switch (*p) {
+          case '\r':
+            break;
+          case '\n':
+            while (thisrow > 0) {
+               gtk5250_terminal_queuekey(term, K_LEFT);
+               thisrow --;
+               if (term->k_buf_len == GTK5250_MAX_K_BUF) {
+                      tn5250_display_do_keys(term->display);
+               }
+            }
+            gtk5250_terminal_queuekey(term, K_DOWN);
+            break;
+          default:
+            thisrow++;
+            gtk5250_terminal_queuekey(term, (*p));
+            break;
+        }
+        if (term->k_buf_len == GTK5250_MAX_K_BUF) {
+             tn5250_display_do_keys(term->display);
+        }
+        p++;
+     }
+
+     g_free(buf);
+     tn5250_display_do_keys(term->display);
+
+}
+
+static void
+gtk5250_terminal_queuekey(Gtk5250Terminal *term, gint key) {
+     if (term->k_buf_len < GTK5250_MAX_K_BUF) {
+           term->k_buf[term->k_buf_len] = key;
+           term->k_buf_len ++;
+     }
+}
+         
