@@ -606,6 +606,25 @@ static gboolean gtk5250_terminal_key_press_event (GtkWidget *widget, GdkEventKey
 
   term->pending |= TN5250_TERMINAL_EVENT_KEY; 
   term->next_keyval = event->keyval;
+  if ((event->state & GDK_SHIFT_MASK) != 0)
+    {
+      /* We need to translate Shift+Fkey ourselves... */
+      switch (term->next_keyval)
+	{
+	case GDK_F1:  term->next_keyval = GDK_F13; break;
+	case GDK_F2:  term->next_keyval = GDK_F14; break;
+	case GDK_F3:  term->next_keyval = GDK_F15; break;
+	case GDK_F4:  term->next_keyval = GDK_F16; break;
+	case GDK_F5:  term->next_keyval = GDK_F17; break;
+	case GDK_F6:  term->next_keyval = GDK_F18; break;
+	case GDK_F7:  term->next_keyval = GDK_F19; break;
+	case GDK_F8:  term->next_keyval = GDK_F20; break;
+	case GDK_F9:  term->next_keyval = GDK_F21; break;
+	case GDK_F10: term->next_keyval = GDK_F22; break;
+	case GDK_F11: term->next_keyval = GDK_F23; break;
+	case GDK_F12: term->next_keyval = GDK_F24; break;
+	}
+    }
 
   gtk_main_quit();
   return TRUE;
