@@ -1,6 +1,9 @@
 Wed May 17, 2000 Jay 'Eraserhead' Felice <jfelice@cronosys.com>
 	* Added TODO file.  Some work on propogating the config object to
 	  all the proper components (specifically the Gtk5250PropDlg).
+	* Load font_80 and font_132 from config file.
+	* Start configuration propigation (to Gtk5250Terminal and 
+	  Gtk5250PropDlg).
 
 Tue May 16, 2000 Jay 'Eraserhead' Felice <jfelice@cronosys.com>
 	* Fixed some Gtk5250Terminal resizing bugs, it's now possible to use
