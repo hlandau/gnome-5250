@@ -144,7 +144,7 @@ main (int argc, char *argv[])
 
   if (tn5250_config_get (config, "host"))
     {
-      stream = tn5250_stream_open (tn5250_config_get (config, "host"));
+      stream = tn5250_stream_open (tn5250_config_get (config, "host"), config);
       if (stream == NULL)
 	return 255; /* FIXME: Error message */
       if (tn5250_stream_config (stream, config) == -1)

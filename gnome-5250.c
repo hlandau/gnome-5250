@@ -117,7 +117,7 @@ int main (int argc, char *argv[])
 
    if (tn5250_config_get (config, "host"))
      {
-       stream = tn5250_stream_open (tn5250_config_get (config, "host"));
+       stream = tn5250_stream_open (tn5250_config_get (config, "host"), config);
        if (stream == NULL)
 	  bomb_out ( _("Could not connect to host.") );
        if (tn5250_stream_config (stream, config) == -1)
